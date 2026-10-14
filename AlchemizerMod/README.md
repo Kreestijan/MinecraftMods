@@ -3,34 +3,6 @@
 A manual, tactile alchemy mod: build an upgradeable still, brew potions step by step, and serve
 customers who walk into your shop.
 
-## Status
-
-Work in progress, at the **tier-1 baseline**: a working still, and the first slice of the core loop.
-
-In place:
-
-- the three tier-1 blocks — Ignition Chamber, Pressure Chamber and Alchemical Tank — with
-  multiblock validation, fuel, a lit state and cached structure checks
-- tanks filled by right-clicking them with a water container, or by clicking one onto the brewing
-  screen's gauge; the containers are matched by item tag, so a mod's own water bucket works
-- the five-slot brew: ordered ingredients, a stack of bottles, water from the attached tanks, four
-  hourglass presets, and a brew that freezes rather than resets when the fire goes out
-- a brew's potion lands in its own output slot, where identical potions stack up to a configurable
-  64 — a global override of vanilla's one-per-slot, so brewed potions stack everywhere
-- fuel that lights when a brew wants it and not before, and burns to exhaustion once lit
-- real, vanilla-compatible potion items as the output, plus Murky Mess for a layout no recipe
-  describes
-- a screen for each machine: fuel and flame for the Ignition Chamber, and ingredients, tank gauge,
-  progress, hourglasses, an output slot and a start button for the Pressure Chamber
-- potions, their effects and effect values as datapack data, so a new potion is a JSON file and no
-  Java change
-
-Not yet written: still tiers 2–4, condensers, batch brewing, enhancement, customers, the shop,
-reputation, barter, recipe discovery, the Almanac, labels, decor and workshops.
-
-The art is placeholder throughout, drawn to be redrawn; the block and item textures are
-correctly-sized stand-ins.
-
 ## Requirements
 
 - Minecraft **26.1.2**
@@ -60,7 +32,10 @@ With the local build files in place:
 
 - `./gradlew build` — compiles every module and runs the unit tests
 - `./gradlew spotlessCheck build` — the full gate, formatter included
-- `./gradlew runData` — regenerates `platform-26/src/generated/resources`, which is committed
+- `./gradlew runData` — writes `platform-26/src/generated/resources`: the block and item models,
+  blockstates, loot tables, recipes, tags and the language files. Only the language files are
+  committed, so this is the command that creates the rest after a clone, and it must be run once
+  before the mod has models, recipes or loot tables to load.
 - `./gradlew runGameTestServer` — the in-game tests, on a headless server
 - `./gradlew runClient` — a development client
 
