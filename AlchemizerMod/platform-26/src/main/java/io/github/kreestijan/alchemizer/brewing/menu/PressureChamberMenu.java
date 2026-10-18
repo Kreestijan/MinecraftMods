@@ -167,9 +167,9 @@ public class PressureChamberMenu extends AbstractContainerMenu {
   /**
    * The fuel slot, at the foot of the left-hand column below the enhancers.
    *
-   * <p>Public because the screen draws the flame inside this well, which is one pixel in from the
-   * slot on every side. Its recess is drawn in the panel artwork at one pixel up-left of the slot,
-   * as every well's is.
+   * <p>Public because the screen draws the flame in this well. Its recess is drawn in the panel
+   * artwork at one pixel up-left of the slot, as every well's is, and the flame covers the slot
+   * itself rather than sitting inset inside it.
    */
   public static final int FUEL_X = 7;
 

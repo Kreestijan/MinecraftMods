@@ -121,14 +121,18 @@ public class PressureChamberScreen extends AbstractContainerScreen<PressureChamb
    * one is a level read at a glance while a brew is running, and fifty-two pixels of travel across
    * a few thousand millibuckets moves too little to see. The tank's screen still draws the shorter
    * one, where a player has come to read the gauge and nothing is happening beside it.
+   *
+   * <p>These numbers are the recess's <b>interior</b>: the panel draws an 18-by-65 well at (185,
+   * 61) and the water fills the 16-by-63 inside it, so the level's lowest row meets the well's
+   * bottom border instead of covering it.
    */
   private static final int GAUGE_X = 186;
 
-  private static final int GAUGE_Y = 61;
+  private static final int GAUGE_Y = 62;
 
   private static final int GAUGE_WIDTH = 16;
 
-  private static final int GAUGE_HEIGHT = 65;
+  private static final int GAUGE_HEIGHT = 63;
 
   /**
    * The brew progress bar: thin, and running the panel's full inner width.
@@ -137,11 +141,11 @@ public class PressureChamberScreen extends AbstractContainerScreen<PressureChamb
    * clock rather than as one more gauge. It is under everything the machine draws — the last slot
    * row and the tank both — so nothing sits between the bar and the machine it is reporting on.
    */
-  private static final int BAR_X = 8;
+  private static final int BAR_X = 7;
 
   private static final int BAR_Y = 130;
 
-  private static final int BAR_WIDTH = 194;
+  private static final int BAR_WIDTH = 195;
 
   private static final int BAR_HEIGHT = 3;
 
@@ -421,14 +425,17 @@ public class PressureChamberScreen extends AbstractContainerScreen<PressureChamb
   /**
    * The flame in the fuel slot's well, drawn furnace-style: a sub-rectangle of the sprite rising
    * from the bottom of the well while the fire burns, behind whatever fuel sits in the slot.
+   *
+   * <p>The sprite is the size of the well's interior and sits exactly on the slot, so the flame
+   * fills the well edge to edge rather than leaving a margin inside it.
    */
   private static final Identifier FLAME_FILL = machine("flame_fill");
 
-  private static final int FLAME_X = PressureChamberMenu.FUEL_X + 2;
+  private static final int FLAME_X = PressureChamberMenu.FUEL_X;
 
-  private static final int FLAME_Y = PressureChamberMenu.FUEL_Y + 2;
+  private static final int FLAME_Y = PressureChamberMenu.FUEL_Y;
 
-  private static final int FLAME_SIZE = 14;
+  private static final int FLAME_SIZE = 16;
 
   /** The translucent red laid over a slot holding something a brew still needs. */
   private static final Identifier SLOT_MISSING = machine("slot_missing");
