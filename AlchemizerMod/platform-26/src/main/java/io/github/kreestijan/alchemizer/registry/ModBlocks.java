@@ -34,11 +34,13 @@ public final class ModBlocks {
   private static final int LIT_LIGHT_LEVEL = 13;
 
   /**
-   * The still's firebox. Holds a fuel slot and a burn state, so it is a block entity too.
+   * The still's firebox: a required part that glows while the chamber above burns.
    *
-   * <p>It emits light, and the light level is read from the block state rather than kept as a
-   * field: a lit chamber is brighter than a cold one, and the state is already what tells a client
-   * which model to draw. A separate "is it bright" flag would be a second copy of the same fact.
+   * <p>The fuel and the fire live in the pressure chamber's block entity, which writes this block's
+   * lit state; the firebox itself holds nothing, ticks nothing and opens no screen. It emits light,
+   * and the light level is read from the block state rather than kept as a field: a lit firebox is
+   * brighter than a cold one, and the state is already what tells a client which model to draw. A
+   * separate "is it bright" flag would be a second copy of the same fact.
    */
   public static final DeferredBlock<IgnitionChamberBlock> IGNITION_CHAMBER =
       BLOCKS.registerBlock(
@@ -56,7 +58,8 @@ public final class ModBlocks {
    * The reaction vessel. Holds the ingredients and the still's own state, so it is a block entity.
    *
    * <p>It is the hardest of the three to break on purpose: the chamber is the machine. A player who
-   * loses it loses the still, where a lost tank or firebox is a part to replace.
+   * loses it loses the brew and everything in it, where a lost tank or firebox is a part to replace
+   * and a paused brew to resume.
    */
   public static final DeferredBlock<PressureChamberBlock> PRESSURE_CHAMBER =
       BLOCKS.registerBlock(

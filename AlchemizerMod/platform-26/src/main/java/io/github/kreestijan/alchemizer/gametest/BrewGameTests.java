@@ -1,8 +1,8 @@
 package io.github.kreestijan.alchemizer.gametest;
 
 import io.github.kreestijan.alchemizer.Alchemizer;
+import io.github.kreestijan.alchemizer.brewing.block.IgnitionChamberBlock;
 import io.github.kreestijan.alchemizer.brewing.blockentity.AlchemicalTankBlockEntity;
-import io.github.kreestijan.alchemizer.brewing.blockentity.IgnitionChamberBlockEntity;
 import io.github.kreestijan.alchemizer.brewing.blockentity.PressureChamberBlockEntity;
 import io.github.kreestijan.alchemizer.brewing.blockentity.PressureChamberBlockEntity.StartResult;
 import io.github.kreestijan.alchemizer.brewing.menu.PressureChamberData;
@@ -98,11 +98,13 @@ public final class BrewGameTests {
       FUEL_WAITS = function("fuel_does_not_burn_before_a_brew", BrewGameTests::fuelWaitsForABrew);
 
   private static final DeferredHolder<Consumer<GameTestHelper>, Consumer<GameTestHelper>>
-      BREW_NOT_SAVED = function("a_saved_brew_does_not_come_back", BrewGameTests::aSavedBrewIsGone);
+      SAVED_BREW_RESUMES =
+          function(
+              "a_saved_brew_resumes_after_reload", BrewGameTests::aSavedBrewResumesAfterReload);
 
   private static final DeferredHolder<Consumer<GameTestHelper>, Consumer<GameTestHelper>>
       PART_REMOVED =
-          function("breaking_a_part_loses_the_brew", BrewGameTests::removingAPartLosesTheBrew);
+          function("breaking_a_part_pauses_the_brew", BrewGameTests::removingAPartPausesTheBrew);
 
   private static final DeferredHolder<Consumer<GameTestHelper>, Consumer<GameTestHelper>>
       SPARE_TANK_REMOVED =
@@ -150,14 +152,13 @@ public final class BrewGameTests {
               OUTPUT_STACKS,
               OUTPUT_BLOCKS,
               FUEL_WAITS,
-              BREW_NOT_SAVED,
+              SAVED_BREW_RESUMES,
               PART_REMOVED,
               SPARE_TANK_REMOVED,
               CHAMBER_SPILLS,
               UNFORMED_SAYS_WHY,
               BATCH_BREW,
               BATCH_CLAMPED,
-              FUEL_GATE,
               PART_ADDED);
 
   /** Vanilla's blank template — {@code data/minecraft/structure/empty.nbt}. */
@@ -186,6 +187,19 @@ public final class BrewGameTests {
 
   /** Extra ticks allowed on top of a brew's own time before its result is asserted. */
   private static final int BREW_GRACE_TICKS = 40;
+
+  /**
+   * The fuel ladder test's own budget, larger than {@link #MAX_TICKS} because the tier-two fuel it
+   * burns is alchemical coal, which the datapack prices at 3200 ticks, and the swap cannot happen
+   * until that burn has run down. Kept separate so every other test keeps the small budget.
+   */
+  private static final int FUEL_GATE_MAX_TICKS = 4200;
+
+  /**
+   * The wait from the mid-burn check to the finished potion: the coal's remaining ~2600 ticks, the
+   * brew's own time, and the grace on top.
+   */
+  private static final int FUEL_SWAP_WAIT_TICKS = 3300;
 
   /** Enough water for several doses, and well inside the shipping tank capacity. */
   private static final int STARTING_WATER_MB = 4000;
@@ -312,6 +326,12 @@ public final class BrewGameTests {
               test.getKey(),
               new TestData<>(environment, EMPTY_STRUCTURE, MAX_TICKS, SETUP_TICKS, true)));
     }
+    // The fuel ladder's burn-down wait outlives the shared budget: see waitsForItsFuel.
+    event.registerTest(
+        FUEL_GATE.getKey().identifier(),
+        new FunctionGameTestInstance(
+            FUEL_GATE.getKey(),
+            new TestData<>(environment, EMPTY_STRUCTURE, FUEL_GATE_MAX_TICKS, SETUP_TICKS, true)));
   }
 
   /**
@@ -326,7 +346,8 @@ public final class BrewGameTests {
    * step with this one.
    *
    * @param helper the running test's handle on its own copy of the world
-   * @return the three block entities, so a test can drive them directly
+   * @return the chamber and the tank block entities, with the firebox's position for the tests that
+   *     read its lit state
    */
   private static TestStill buildStill(GameTestHelper helper) {
     helper.setBlock(FIREBOX_POS, ModBlocks.IGNITION_CHAMBER.get());
@@ -339,7 +360,7 @@ public final class BrewGameTests {
 
     return new TestStill(
         helper.getBlockEntity(CHAMBER_POS, PressureChamberBlockEntity.class),
-        helper.getBlockEntity(FIREBOX_POS, IgnitionChamberBlockEntity.class),
+        FIREBOX_POS,
         tankEntity);
   }
 
@@ -352,7 +373,8 @@ public final class BrewGameTests {
    * around would be harder to read than the six lines it saved.
    *
    * @param helper the running test's handle on its own copy of the world
-   * @return the three block entities, the firebox being the one this layout builds
+   * @return the chamber and the tank block entities, with the firebox's position for the tests that
+   *     read its lit state
    */
   private static TestStill buildTierThreeStill(GameTestHelper helper) {
     helper.setBlock(FIREBOX_POS, ModBlocks.IGNITION_CHAMBER.get());
@@ -369,7 +391,7 @@ public final class BrewGameTests {
 
     return new TestStill(
         helper.getBlockEntity(CHAMBER_POS, PressureChamberBlockEntity.class),
-        helper.getBlockEntity(FIREBOX_POS, IgnitionChamberBlockEntity.class),
+        FIREBOX_POS,
         tankEntity);
   }
 
@@ -432,7 +454,7 @@ public final class BrewGameTests {
   private static void brewsTheTestPotion(GameTestHelper helper) {
     TestStill still = buildStill(helper);
     loadIngredients(still.chamber(), Items.SPIDER_EYE, Items.DANDELION);
-    still.firebox().setItem(0, new ItemStack(Items.COAL));
+    still.chamber().setItem(PressureChamberBlockEntity.SLOT_FUEL, new ItemStack(Items.COAL));
 
     // Read before starting, because starting is what spends the water.
     int waterBefore = still.tank().level().storedMb();
@@ -500,7 +522,7 @@ public final class BrewGameTests {
   private static void brewsSwiftness(GameTestHelper helper) {
     TestStill still = buildStill(helper);
     loadIngredients(still.chamber(), Items.NETHER_WART, Items.SUGAR);
-    still.firebox().setItem(0, new ItemStack(Items.COAL));
+    still.chamber().setItem(PressureChamberBlockEntity.SLOT_FUEL, new ItemStack(Items.COAL));
     assertStarted(helper, still.chamber(), HourglassPreset.FIFTEEN);
 
     helper.runAfterDelay(
@@ -554,7 +576,7 @@ public final class BrewGameTests {
               0,
               "ticks elapsed on a brew with no fire");
 
-          still.firebox().setItem(0, new ItemStack(Items.COAL));
+          still.chamber().setItem(PressureChamberBlockEntity.SLOT_FUEL, new ItemStack(Items.COAL));
 
           helper.runAfterDelay(
               BREW_GRACE_TICKS,
@@ -580,7 +602,7 @@ public final class BrewGameTests {
   private static void brewsMurkyMess(GameTestHelper helper) {
     TestStill still = buildStill(helper);
     loadIngredients(still.chamber(), Items.SPIDER_EYE);
-    still.firebox().setItem(0, new ItemStack(Items.COAL));
+    still.chamber().setItem(PressureChamberBlockEntity.SLOT_FUEL, new ItemStack(Items.COAL));
 
     // Read before starting, because starting is what spends the water — a failed brew is paid for
     // at the same moment a successful one is.
@@ -615,7 +637,7 @@ public final class BrewGameTests {
   private static void spendsFromBottleStack(GameTestHelper helper) {
     TestStill still = buildStill(helper);
     loadIngredients(still.chamber(), 3, Items.SPIDER_EYE, Items.DANDELION);
-    still.firebox().setItem(0, new ItemStack(Items.COAL));
+    still.chamber().setItem(PressureChamberBlockEntity.SLOT_FUEL, new ItemStack(Items.COAL));
     assertStarted(helper, still.chamber(), HourglassPreset.FIVE);
 
     ItemStack bottles = still.chamber().getItem(PressureChamberBlockEntity.SLOT_BOTTLE);
@@ -646,7 +668,7 @@ public final class BrewGameTests {
         "the stack size the potion item reports");
 
     loadIngredients(still.chamber(), 2, Items.SPIDER_EYE, Items.DANDELION);
-    still.firebox().setItem(0, new ItemStack(Items.COAL));
+    still.chamber().setItem(PressureChamberBlockEntity.SLOT_FUEL, new ItemStack(Items.COAL));
     assertStarted(helper, still.chamber(), HourglassPreset.FIVE);
 
     helper.runAfterDelay(
@@ -682,7 +704,7 @@ public final class BrewGameTests {
   private static void refusesWhenOutputIsBlocked(GameTestHelper helper) {
     TestStill still = buildStill(helper);
     loadIngredients(still.chamber(), Items.SPIDER_EYE, Items.DANDELION);
-    still.firebox().setItem(0, new ItemStack(Items.COAL));
+    still.chamber().setItem(PressureChamberBlockEntity.SLOT_FUEL, new ItemStack(Items.COAL));
     still
         .chamber()
         .setItem(PressureChamberBlockEntity.SLOT_OUTPUT, new ItemStack(Items.POTION, 64));
@@ -706,31 +728,44 @@ public final class BrewGameTests {
   }
 
   /**
-   * Checks that a loaded coal is not alight until a brew wants the fire.
+   * Checks that a loaded coal is not alight until a brew wants the fire, and that the firebox's lit
+   * state follows the chamber's fire.
    *
    * <p>The assertion is made twice on purpose: once immediately, and once after enough ticks that a
    * chamber which lit its fuel the way it used to would certainly have caught. An idle firebox used
    * to burn a loaded coal down to nothing while the player was still assembling the machine.
+   *
+   * <p>The firebox's own block state is asserted alongside, because the glow is now a write the
+   * chamber makes onto a block that has no block entity of its own — a sync that can silently stop
+   * doing anything without this test.
    *
    * @param helper the running test's handle on its own copy of the world
    */
   private static void fuelWaitsForABrew(GameTestHelper helper) {
     TestStill still = buildStill(helper);
     loadIngredients(still.chamber(), Items.SPIDER_EYE, Items.DANDELION);
-    still.firebox().setItem(0, new ItemStack(Items.COAL));
+    still.chamber().setItem(PressureChamberBlockEntity.SLOT_FUEL, new ItemStack(Items.COAL));
 
     helper.assertTrue(
-        !still.firebox().isLit(),
-        Component.literal("a firebox with no brew above it should not light its fuel"));
+        !still.chamber().isLit(),
+        Component.literal("a loaded still with no brew should not light its fuel"));
+    helper.assertTrue(
+        !fireboxLit(helper, still),
+        Component.literal("a cold chamber should leave its firebox dark"));
 
     helper.runAfterDelay(
         BREW_GRACE_TICKS,
         () -> {
           helper.assertTrue(
-              !still.firebox().isLit(),
-              Component.literal("a firebox with no brew above it should stay cold"));
+              !still.chamber().isLit(),
+              Component.literal("a loaded still with no brew should stay cold"));
           helper.assertValueEqual(
-              still.firebox().getItem(0).getCount(), 1, "coal left in an idle firebox");
+              still.chamber().getItem(PressureChamberBlockEntity.SLOT_FUEL).getCount(),
+              1,
+              "coal left in an idle chamber");
+          helper.assertTrue(
+              !fireboxLit(helper, still),
+              Component.literal("an idle chamber's firebox should stay dark"));
 
           assertStarted(helper, still.chamber(), HourglassPreset.FIVE);
 
@@ -738,20 +773,33 @@ public final class BrewGameTests {
               BREW_GRACE_TICKS,
               () -> {
                 helper.assertTrue(
-                    still.firebox().isLit(),
-                    Component.literal("a firebox under a running brew should light its fuel"));
+                    still.chamber().isLit(),
+                    Component.literal("a still under a running brew should light its fuel"));
+                helper.assertTrue(
+                    fireboxLit(helper, still),
+                    Component.literal(
+                        "the chamber's fire should be written onto the firebox's lit state"));
                 helper.succeed();
               });
         });
   }
 
   /**
-   * Checks that a chamber saved mid-brew comes back idle, with its items intact.
+   * @param helper the running test's handle on its own copy of the world
+   * @param still the still whose firebox is being asked about
+   * @return whether the ignition chamber below the chamber has its lit state set
+   */
+  private static boolean fireboxLit(GameTestHelper helper, TestStill still) {
+    return helper.getBlockState(still.firebox()).getValue(IgnitionChamberBlock.LIT);
+  }
+
+  /**
+   * Checks that a chamber saved mid-brew comes back brewing, with its progress intact.
    *
-   * <p>This is the rule that makes a still's ingredients cost something: the brew is spent at the
-   * start and is not written down, so a reload loses it. The counterweight matters as much as the
-   * claim — the <em>slots</em> are the player's and do persist, so the assertion that the bottles
-   * are still there is what shows the save was not simply dropped whole.
+   * <p>This is the rule that makes a still forgiving of a chunk unload or a server restart: the
+   * brew is written down with the chamber, so a reload finds it where it was and carries on. The
+   * slots are asserted too, so the test shows the save carried both halves — the player's items and
+   * the brew made from them.
    *
    * <p>The save is taken after forty ticks rather than at the start, so the brew has real progress
    * on the clock when it is written. Without that, a chamber that saved and restored a zero-length
@@ -759,10 +807,10 @@ public final class BrewGameTests {
    *
    * @param helper the running test's handle on its own copy of the world
    */
-  private static void aSavedBrewIsGone(GameTestHelper helper) {
+  private static void aSavedBrewResumesAfterReload(GameTestHelper helper) {
     TestStill still = buildStill(helper);
     loadIngredients(still.chamber(), 3, Items.SPIDER_EYE, Items.DANDELION);
-    still.firebox().setItem(0, new ItemStack(Items.COAL));
+    still.chamber().setItem(PressureChamberBlockEntity.SLOT_FUEL, new ItemStack(Items.COAL));
     assertStarted(helper, still.chamber(), HourglassPreset.FIVE);
 
     helper.runAfterDelay(
@@ -772,6 +820,8 @@ public final class BrewGameTests {
               still.chamber().brewSession().elapsedTicks() > 0,
               Component.literal("the brew should have made progress before it is saved"));
 
+          int elapsedAtSave = still.chamber().brewSession().elapsedTicks();
+          int totalAtSave = still.chamber().brewSession().totalTicks();
           CompoundTag saved = still.chamber().saveCustomOnly(helper.getLevel().registryAccess());
           PressureChamberBlockEntity reloaded =
               new PressureChamberBlockEntity(
@@ -781,15 +831,17 @@ public final class BrewGameTests {
                   ProblemReporter.DISCARDING, helper.getLevel().registryAccess(), saved));
 
           helper.assertTrue(
-              !reloaded.hasBrew(),
-              Component.literal(
-                  "a brew is not saved, so a reloaded chamber must not still be brewing"));
+              reloaded.hasBrew(),
+              Component.literal("a saved brew should come back with its chamber"));
           helper.assertValueEqual(
-              reloaded.brewSession().elapsedTicks(), 0, "ticks elapsed on a reloaded chamber");
+              reloaded.brewSession().elapsedTicks(),
+              elapsedAtSave,
+              "ticks elapsed on a reloaded chamber");
           helper.assertValueEqual(
-              reloaded.brewSession().totalTicks(),
-              0,
-              "ticks the reloaded chamber's missing brew takes");
+              reloaded.brewSession().totalTicks(), totalAtSave, "ticks the reloaded brew takes");
+          helper.assertTrue(
+              reloaded.brewingPotion().equals(Optional.of(TEST_POTION_ID)),
+              Component.literal("the reloaded brew should still be making the same potion"));
           // What the player loaded is theirs, and stays.
           helper.assertValueEqual(
               reloaded.getItem(PressureChamberBlockEntity.SLOT_BOTTLE).getCount(),
@@ -800,20 +852,21 @@ public final class BrewGameTests {
   }
 
   /**
-   * Checks that taking a part away mid-brew costs the player the brew.
+   * Checks that taking a part away mid-brew pauses the brew, and putting it back resumes it.
    *
-   * <p>The tank goes, the still is no longer whole, and the ingredients and water that were spent
-   * at the start are gone for good. The assertion on the elapsed count is the half that separates
-   * this from a brew that merely paused: a chamber that held the timer would report the same
-   * non-zero count it had before.
+   * <p>The tank goes, the still is no longer whole, and the brew stops where it is — but it is
+   * kept, because the machine can be mended. The assertion on the frozen count is the half that
+   * separates this from a brew that carried on: a chamber that ignored the break would report a
+   * higher count after the pause window than before it. The restored tank then puts the machine
+   * back together, and the count moves again.
    *
    * @param helper the running test's handle on its own copy of the world
    */
-  private static void removingAPartLosesTheBrew(GameTestHelper helper) {
+  private static void removingAPartPausesTheBrew(GameTestHelper helper) {
     TestStill still = buildStill(helper);
     loadIngredients(still.chamber(), Items.SPIDER_EYE, Items.DANDELION);
-    still.firebox().setItem(0, new ItemStack(Items.COAL));
-    assertStarted(helper, still.chamber(), HourglassPreset.FIVE);
+    still.chamber().setItem(PressureChamberBlockEntity.SLOT_FUEL, new ItemStack(Items.COAL));
+    assertStarted(helper, still.chamber(), HourglassPreset.FIFTEEN);
 
     helper.runAfterDelay(
         BREW_GRACE_TICKS,
@@ -823,15 +876,30 @@ public final class BrewGameTests {
               Component.literal("the brew should be running before the part is broken"));
 
           helper.setBlock(TANK_POS, Blocks.AIR);
-
+          int frozen = still.chamber().brewSession().elapsedTicks();
           helper.assertTrue(
-              !still.chamber().hasBrew(),
-              Component.literal("breaking a part of the still should end the brew"));
-          helper.assertValueEqual(
-              still.chamber().brewSession().elapsedTicks(),
-              0,
-              "ticks left on a brew whose machine was broken");
-          helper.succeed();
+              still.chamber().hasBrew(),
+              Component.literal("breaking a part of the still should pause the brew, not end it"));
+
+          helper.runAfterDelay(
+              BREW_GRACE_TICKS,
+              () -> {
+                helper.assertValueEqual(
+                    still.chamber().brewSession().elapsedTicks(),
+                    frozen,
+                    "ticks elapsed while the machine stood broken");
+
+                helper.setBlock(TANK_POS, ModBlocks.ALCHEMICAL_TANK.get());
+                helper.runAfterDelay(
+                    BREW_GRACE_TICKS,
+                    () -> {
+                      helper.assertTrue(
+                          still.chamber().brewSession().elapsedTicks() > frozen,
+                          Component.literal(
+                              "mending the machine should resume the brew it was holding"));
+                      helper.succeed();
+                    });
+              });
         });
   }
 
@@ -850,7 +918,7 @@ public final class BrewGameTests {
     TestStill still = buildStill(helper);
     helper.setBlock(SPARE_TANK_POS, ModBlocks.ALCHEMICAL_TANK.get());
     loadIngredients(still.chamber(), Items.SPIDER_EYE, Items.DANDELION);
-    still.firebox().setItem(0, new ItemStack(Items.COAL));
+    still.chamber().setItem(PressureChamberBlockEntity.SLOT_FUEL, new ItemStack(Items.COAL));
     assertStarted(helper, still.chamber(), HourglassPreset.FIVE);
 
     helper.runAfterDelay(
@@ -950,7 +1018,7 @@ public final class BrewGameTests {
     loadBatch(chamber, BATCH, BATCH, Items.SPIDER_EYE, Items.DANDELION);
     setBatch(chamber, BATCH);
     helper.assertValueEqual(chamber.effectiveBatch(), BATCH, "the batch the dial asks for");
-    still.firebox().setItem(0, new ItemStack(Items.COAL));
+    still.chamber().setItem(PressureChamberBlockEntity.SLOT_FUEL, new ItemStack(Items.COAL));
 
     int waterBefore = still.tank().level().storedMb();
     assertStarted(helper, chamber, HourglassPreset.FIVE);
@@ -1027,7 +1095,7 @@ public final class BrewGameTests {
 
     // Two of each in the wells and two bottles, which a machine brewing one at a time accepts and
     // spends one of — the clamp is what makes this a start rather than a refusal either way.
-    still.firebox().setItem(0, new ItemStack(Items.COAL));
+    still.chamber().setItem(PressureChamberBlockEntity.SLOT_FUEL, new ItemStack(Items.COAL));
     assertStarted(helper, chamber, HourglassPreset.FIVE);
     helper.assertValueEqual(
         chamber.getItem(PressureChamberBlockEntity.SLOT_OUTPUT).getCount(),
@@ -1079,7 +1147,7 @@ public final class BrewGameTests {
   }
 
   /**
-   * Brews a tier-three recipe on tier-two fuel, and then on the fuel it actually asks for.
+   * Brews a tier-three recipe on tier-two fuel, and then gives the same brew the fire it asks for.
    *
    * <p>This is the whole fuel ladder made observable, which is the reason the tier recipes exist at
    * all. Every rule in it is unit-tested in {@code core} against plain records; what cannot be
@@ -1090,7 +1158,10 @@ public final class BrewGameTests {
    *
    * <p>The first half asserts the brew did not move at all rather than that it was slow: a chamber
    * that advanced even one tick would fail, so the assertion does not depend on how long the test
-   * waits, and the wait can be short.
+   * waits, and the wait can be short. The blaze rod is then slid into the fuel slot, and the brew
+   * waits for the coal to burn itself out — a lit chamber will not touch the next fuel until the
+   * current one is done — before the same brew moves again on the tier-three fire and runs to the
+   * end.
    *
    * @param helper the running test's handle on its own copy of the world
    */
@@ -1105,7 +1176,10 @@ public final class BrewGameTests {
     // Alchemical Coal is the second rung and this recipe is on the third, so the brew is accepted
     // and then never moves. Starting is not where the fuel is checked — a player may load a still
     // and light it afterwards — so this is a running brew held still, not a refused one.
-    still.firebox().setItem(0, new ItemStack(ModItems.ALCHEMICAL_COAL.get()));
+    still
+        .chamber()
+        .setItem(
+            PressureChamberBlockEntity.SLOT_FUEL, new ItemStack(ModItems.ALCHEMICAL_COAL.get()));
     assertStarted(helper, still.chamber(), HourglassPreset.THIRTY);
 
     helper.runAfterDelay(
@@ -1115,46 +1189,61 @@ public final class BrewGameTests {
               still.chamber().brewSession().elapsedTicks(),
               0,
               "ticks elapsed on a tier-three brew burning tier-two fuel");
+          helper.assertTrue(
+              fireboxLit(helper, still),
+              Component.literal("the firebox should glow while the weak fire burns"));
 
-          // The same recipe on the same machine with one rung more fire under it. The firebox is
-          // replaced rather than refuelled, because a chamber that is already alight will not look
-          // at its slot until the fuel it lit has burned down, and the coal has most of two minutes
-          // left on it.
-          helper.setBlock(FIREBOX_POS, Blocks.AIR);
-          helper.setBlock(FIREBOX_POS, ModBlocks.IGNITION_CHAMBER.get());
-          helper
-              .getBlockEntity(FIREBOX_POS, IgnitionChamberBlockEntity.class)
-              .setItem(0, new ItemStack(Items.BLAZE_ROD));
-
-          loadIngredients(still.chamber(), Items.MAGMA_CREAM, Items.BLAZE_POWDER);
-          assertStarted(helper, still.chamber(), HourglassPreset.THIRTY);
+          // The chamber is already alight, so the next fuel waits in the slot until the coal burns
+          // down — which is the whole of the ladder swap now.
+          still
+              .chamber()
+              .setItem(PressureChamberBlockEntity.SLOT_FUEL, new ItemStack(Items.BLAZE_ROD));
 
           helper.runAfterDelay(
-              THIRTY_SECOND_BREW_TICKS + BREW_GRACE_TICKS,
+              560,
               () -> {
-                ItemStack brewed = still.chamber().getItem(PressureChamberBlockEntity.SLOT_OUTPUT);
-                helper.assertTrue(
-                    brewed.getItem() == Items.POTION,
-                    Component.literal(
-                        "a tier-three recipe should brew on a blaze rod, but the output holds "
-                            + brewed));
-
-                PotionContents contents = brewed.get(DataComponents.POTION_CONTENTS);
-                if (contents == null) {
-                  helper.fail("the brewed potion carries no potion contents");
-                  return;
-                }
-                List<MobEffectInstance> effects = contents.customEffects();
                 helper.assertValueEqual(
-                    effects.size(), 1, "number of effects on the fire resistance potion");
+                    still.chamber().brewSession().elapsedTicks(),
+                    0,
+                    "the brew should stay held while the tier-two fuel burns");
+                helper.assertValueEqual(
+                    still.chamber().getItem(PressureChamberBlockEntity.SLOT_FUEL).getCount(),
+                    1,
+                    "a lit chamber should not consume the next fuel before the current one burns down");
                 helper.assertTrue(
-                    FIRE_RESISTANCE_EFFECT.equals(
-                        BuiltInRegistries.MOB_EFFECT.getKey(
-                            effects.getFirst().getEffect().value())),
-                    Component.literal(
-                        "the tier-three potion should carry fire resistance, not "
-                            + effects.getFirst().getEffect()));
-                helper.succeed();
+                    fireboxLit(helper, still),
+                    Component.literal("the firebox should still be glowing"));
+
+                helper.runAfterDelay(
+                    FUEL_SWAP_WAIT_TICKS,
+                    () -> {
+                      // The coal burned out, the blaze rod was lit, and the same brew finished on
+                      // tier-three fire.
+                      ItemStack brewed =
+                          still.chamber().getItem(PressureChamberBlockEntity.SLOT_OUTPUT);
+                      helper.assertTrue(
+                          brewed.getItem() == Items.POTION,
+                          Component.literal(
+                              "a tier-three recipe should brew on a blaze rod, but the output holds "
+                                  + brewed));
+
+                      PotionContents contents = brewed.get(DataComponents.POTION_CONTENTS);
+                      if (contents == null) {
+                        helper.fail("the brewed potion carries no potion contents");
+                        return;
+                      }
+                      List<MobEffectInstance> effects = contents.customEffects();
+                      helper.assertValueEqual(
+                          effects.size(), 1, "number of effects on the fire resistance potion");
+                      helper.assertTrue(
+                          FIRE_RESISTANCE_EFFECT.equals(
+                              BuiltInRegistries.MOB_EFFECT.getKey(
+                                  effects.getFirst().getEffect().value())),
+                          Component.literal(
+                              "the tier-three potion should carry fire resistance, not "
+                                  + effects.getFirst().getEffect()));
+                      helper.succeed();
+                    });
               });
         });
   }
@@ -1203,12 +1292,10 @@ public final class BrewGameTests {
   }
 
   /**
-   * @param chamber the still's pressure chamber, which owns the brew
-   * @param firebox the ignition chamber below it
+   * @param chamber the still's pressure chamber, which owns the brew and the fire
+   * @param firebox the ignition chamber's position below it, for the tests that read its lit state
    * @param tank the tank feeding it
    */
   private record TestStill(
-      PressureChamberBlockEntity chamber,
-      IgnitionChamberBlockEntity firebox,
-      AlchemicalTankBlockEntity tank) {}
+      PressureChamberBlockEntity chamber, BlockPos firebox, AlchemicalTankBlockEntity tank) {}
 }

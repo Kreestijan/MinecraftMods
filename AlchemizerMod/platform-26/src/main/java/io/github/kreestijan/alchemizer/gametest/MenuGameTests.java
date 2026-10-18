@@ -2,12 +2,9 @@ package io.github.kreestijan.alchemizer.gametest;
 
 import io.github.kreestijan.alchemizer.Alchemizer;
 import io.github.kreestijan.alchemizer.brewing.blockentity.AlchemicalTankBlockEntity;
-import io.github.kreestijan.alchemizer.brewing.blockentity.IgnitionChamberBlockEntity;
 import io.github.kreestijan.alchemizer.brewing.blockentity.PressureChamberBlockEntity;
 import io.github.kreestijan.alchemizer.brewing.blockentity.PressureChamberBlockEntity.StartResult;
 import io.github.kreestijan.alchemizer.brewing.menu.AlchemicalTankMenu;
-import io.github.kreestijan.alchemizer.brewing.menu.IgnitionChamberData;
-import io.github.kreestijan.alchemizer.brewing.menu.IgnitionChamberMenu;
 import io.github.kreestijan.alchemizer.brewing.menu.PressureChamberData;
 import io.github.kreestijan.alchemizer.brewing.menu.PressureChamberMenu;
 import io.github.kreestijan.alchemizer.core.recipe.BrewRecipe;
@@ -61,11 +58,10 @@ import net.neoforged.neoforge.registries.DeferredRegister;
  * state reaches it from the server, and the only way to test a view is to press its buttons.
  *
  * <p><b>What can be tested here and what cannot.</b> A game test runs on a dedicated server, so no
- * {@code Screen} is ever constructed: {@code PressureChamberScreen} and {@code
- * IgnitionChamberScreen} are not mentioned here at all, and their drawing is unchecked by this
- * class. What is checked is everything behind them — the menu the screen is handed, the numbers it
- * reads, and the server's response to each button id. Opening a window and looking at it stays a
- * manual step.
+ * {@code Screen} is ever constructed: {@code PressureChamberScreen} is not mentioned here at all,
+ * and its drawing is unchecked by this class. What is checked is everything behind it — the menu
+ * the screen is handed, the numbers it reads, and the server's response to each button id. Opening
+ * a window and looking at it stays a manual step.
  *
  * <p><b>Why the buttons are pressed through the menu rather than through the chamber.</b> {@code
  * clickMenuButton} is the single entry point a client's button press arrives at, and it is where
@@ -205,15 +201,12 @@ public final class MenuGameTests {
   private static final int LIT_TICKS = 2;
 
   /**
-   * Ticks to leave a fire burning before the countdown is read again.
+   * Ticks to leave a fire burning before the flame's fraction is read again.
    *
-   * <p>More than twenty, so that a countdown which never moved would be caught rather than a
-   * reading merely landing inside the same second.
+   * <p>More than twenty, so that a fraction which never moved would be caught rather than a reading
+   * merely landing inside the same piece of the piece of coal.
    */
   private static final int COUNTDOWN_TICKS = 25;
-
-  /** Coal's burn time in vanilla, which is what the countdown is asserted against. */
-  private static final int COAL_BURN_SECONDS = 80;
 
   /**
    * The recipes the book tests reach for.
@@ -335,7 +328,7 @@ public final class MenuGameTests {
   private static void startsAtTheServersPreset(GameTestHelper helper) {
     TestStill still = buildStill(helper);
     loadIngredients(still.chamber(), Items.SPIDER_EYE, Items.DANDELION);
-    still.firebox().setItem(0, new ItemStack(Items.COAL));
+    still.chamber().setItem(PressureChamberBlockEntity.SLOT_FUEL, new ItemStack(Items.COAL));
     Player player = helper.makeMockPlayer(GameType.CREATIVE);
     PressureChamberMenu menu = pressureMenu(player, still.chamber());
 
@@ -642,46 +635,47 @@ public final class MenuGameTests {
   private static void fuelOnly(GameTestHelper helper) {
     TestStill still = buildStill(helper);
     Player player = helper.makeMockPlayer(GameType.CREATIVE);
-    IgnitionChamberMenu menu =
-        new IgnitionChamberMenu(
-            CONTAINER_ID,
-            player.getInventory(),
-            still.firebox(),
-            new IgnitionChamberData(still.firebox()));
+    PressureChamberMenu menu = pressureMenu(player, still.chamber());
+    int fuel = PressureChamberBlockEntity.SLOT_FUEL;
 
-    helper.assertTrue(menu.slots.get(0).mayPlace(new ItemStack(Items.COAL)), "coal is a fuel");
-    helper.assertTrue(menu.slots.get(0).mayPlace(new ItemStack(Items.STICK)), "a stick is a fuel");
-    helper.assertFalse(
-        menu.slots.get(0).mayPlace(new ItemStack(Items.REDSTONE)), "redstone is not a fuel");
-
-    // The ignition menu numbers its player inventory from index one, one machine slot in.
-    int menuInvSlot = 1;
-    int playerInvSlot = 9;
-
-    player.getInventory().setItem(playerInvSlot, new ItemStack(Items.REDSTONE));
-    menu.quickMoveStack(player, menuInvSlot);
+    helper.assertTrue(menu.slots.get(fuel).mayPlace(new ItemStack(Items.COAL)), "coal is a fuel");
     helper.assertTrue(
-        menu.slots.get(0).getItem().isEmpty(),
+        menu.slots.get(fuel).mayPlace(new ItemStack(Items.STICK)), "a stick is a fuel");
+    helper.assertFalse(
+        menu.slots.get(fuel).mayPlace(new ItemStack(Items.REDSTONE)), "redstone is not a fuel");
+
+    // The other machine slots are filled, so a non-fuel shift-clicked from the player has nowhere
+    // to go: the fuel slot refuses it and every well is taken, which is what keeps it put.
+    for (int slot = PressureChamberBlockEntity.SLOT_INGREDIENT_FIRST;
+        slot < PressureChamberBlockEntity.SLOT_BOTTLE;
+        slot++) {
+      still.chamber().setItem(slot, new ItemStack(Items.SPIDER_EYE));
+    }
+
+    player.getInventory().setItem(PLAYER_INV_SLOT_START, new ItemStack(Items.REDSTONE));
+    menu.quickMoveStack(player, MENU_INV_SLOT_START);
+    helper.assertTrue(
+        menu.slots.get(fuel).getItem().isEmpty(),
         "a shift-clicked non-fuel should not reach the fuel slot");
     helper.assertTrue(
-        menu.slots.get(menuInvSlot).getItem().getItem() == Items.REDSTONE,
+        menu.slots.get(MENU_INV_SLOT_START).getItem().getItem() == Items.REDSTONE,
         "a non-fuel should be left where it was");
 
-    player.getInventory().setItem(playerInvSlot + 1, new ItemStack(Items.COAL));
-    menu.quickMoveStack(player, menuInvSlot + 1);
+    player.getInventory().setItem(PLAYER_INV_SLOT_START + 1, new ItemStack(Items.COAL));
+    menu.quickMoveStack(player, MENU_INV_SLOT_START + 1);
     helper.assertTrue(
-        menu.slots.get(0).getItem().getItem() == Items.COAL,
+        menu.slots.get(fuel).getItem().getItem() == Items.COAL,
         "a shift-clicked fuel should reach the fuel slot");
     helper.succeed();
   }
 
   /**
-   * Checks the fuel menu's countdown: nothing while the chamber is cold, then the coal's own time.
+   * Checks the flame's fraction: nothing while the chamber is cold, then nearly a whole piece of
+   * coal, then less.
    *
-   * <p>The countdown is the one number on the fuel screen that is not a picture. The bar is the
-   * same figure as a fraction, so what is really under test here is the conversion — that the ticks
-   * the chamber reports become the seconds a player counts in, and that the rounding is the one
-   * that keeps the reading honest at both ends of a piece of fuel.
+   * <p>The flame is the one picture of the burn on the brewing screen, so what is under test is the
+   * conversion — that the ticks the chamber reports become the fraction the flame is cut from, and
+   * that the fraction falls as the coal burns.
    *
    * <p>A brew has to be started to get there, because the fire only lights for one. It is started
    * and then left alone: what the brew does with its time is {@link BrewGameTests}' subject, and
@@ -692,44 +686,35 @@ public final class MenuGameTests {
   private static void countsTheBurnDown(GameTestHelper helper) {
     TestStill still = buildStill(helper);
     Player player = helper.makeMockPlayer(GameType.CREATIVE);
-    IgnitionChamberMenu fuel =
-        new IgnitionChamberMenu(
-            CONTAINER_ID,
-            player.getInventory(),
-            still.firebox(),
-            new IgnitionChamberData(still.firebox()));
+    PressureChamberMenu fuel = pressureMenu(player, still.chamber());
 
     helper.assertFalse(fuel.isLit(), "a chamber nobody has lit");
-    helper.assertValueEqual(
-        fuel.burnSecondsRemaining(), 0, "seconds on the countdown of a cold chamber");
+    helper.assertValueEqual(fuel.burnProgress(), 0.0F, "the flame of a cold chamber");
 
     loadIngredients(still.chamber(), Items.SPIDER_EYE, Items.DANDELION);
-    still.firebox().setItem(0, new ItemStack(Items.COAL));
+    still.chamber().setItem(PressureChamberBlockEntity.SLOT_FUEL, new ItemStack(Items.COAL));
     helper.assertTrue(
-        pressureMenu(player, still.chamber())
-            .clickMenuButton(player, PressureChamberMenu.BUTTON_START),
+        fuel.clickMenuButton(player, PressureChamberMenu.BUTTON_START),
         "the start button, which is what the fire lights for");
 
     helper.runAfterDelay(
         LIT_TICKS,
         () -> {
-          helper.assertTrue(fuel.isLit(), "a firebox under a running brew");
-          int seconds = fuel.burnSecondsRemaining();
-          // Coal burns for sixteen hundred ticks. Rounding up holds the reading at eighty until
-          // twenty of them have gone, so a check taken a tick or two after the fire catches reads
-          // the whole piece rather than one second less than it.
-          helper.assertValueEqual(
-              seconds, COAL_BURN_SECONDS, "seconds on a freshly lit piece of coal");
+          helper.assertTrue(fuel.isLit(), "a fire under a running brew");
+          float fresh = fuel.burnProgress();
+          helper.assertTrue(
+              fresh > 0.9F,
+              Component.literal(
+                  "a freshly lit piece of coal should read nearly full, but read " + fresh));
 
           helper.runAfterDelay(
               COUNTDOWN_TICKS,
               () -> {
+                float later = fuel.burnProgress();
                 helper.assertTrue(
-                    fuel.burnSecondsRemaining() < seconds,
+                    later < fresh,
                     Component.literal(
-                        "the countdown should fall as the coal burns, but it still reads "
-                            + fuel.burnSecondsRemaining()
-                            + " seconds"));
+                        "the flame should shrink as the coal burns, but it still reads " + later));
                 helper.succeed();
               });
         });
@@ -1014,9 +999,7 @@ public final class MenuGameTests {
     tankEntity.setStoredMb(STARTING_WATER_MB);
 
     return new TestStill(
-        helper.getBlockEntity(chamber, PressureChamberBlockEntity.class),
-        helper.getBlockEntity(firebox, IgnitionChamberBlockEntity.class),
-        tankEntity);
+        helper.getBlockEntity(chamber, PressureChamberBlockEntity.class), firebox, tankEntity);
   }
 
   /**
@@ -1046,9 +1029,7 @@ public final class MenuGameTests {
     tankEntity.setStoredMb(STARTING_WATER_MB);
 
     return new TestStill(
-        helper.getBlockEntity(chamber, PressureChamberBlockEntity.class),
-        helper.getBlockEntity(firebox, IgnitionChamberBlockEntity.class),
-        tankEntity);
+        helper.getBlockEntity(chamber, PressureChamberBlockEntity.class), firebox, tankEntity);
   }
 
   /**
@@ -1090,12 +1071,10 @@ public final class MenuGameTests {
   }
 
   /**
-   * @param chamber the still's pressure chamber, which owns the brew
-   * @param firebox the ignition chamber below it
+   * @param chamber the still's pressure chamber, which owns the brew and the fire
+   * @param firebox the ignition chamber's position below it
    * @param tank the tank feeding it
    */
   private record TestStill(
-      PressureChamberBlockEntity chamber,
-      IgnitionChamberBlockEntity firebox,
-      AlchemicalTankBlockEntity tank) {}
+      PressureChamberBlockEntity chamber, BlockPos firebox, AlchemicalTankBlockEntity tank) {}
 }

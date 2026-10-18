@@ -3,6 +3,32 @@
 Notable changes to Alchemizer, newest first. This project does not yet follow a numbered release
 scheme; entries are grouped by the milestone that produced them.
 
+## Unreleased — the fuel moves into the pressure chamber
+
+The Ignition Chamber's change of heart: its GUI is gone and so are its features. It stays a
+required multiblock part and it keeps its glow, but the fuel, the fire and the fuel slot now live
+in the Pressure Chamber, whose screen grows one slot in the lower left corner.
+
+### Changed
+
+- **The ignition chamber is a block and nothing more.** No fuel slot, no burn state, no ticker, no
+  screen — a right-click on it does nothing. It remains a required part of the still, and breaking
+  it still pauses a brew the way breaking any part does. Its lit state and its light emission stay,
+  and the pressure chamber's block entity now writes them: the firebox glows while the chamber
+  above burns, and a broken chamber puts its firebox out on the way out of the world.
+- **The pressure chamber holds the fuel and burns it.** A fuel slot sits at (7,109) — the lower
+  left corner, under the enhancer slots — and the chamber lights fuel only while a brew wants the
+  fire, burns it to exhaustion once lit, and pauses the brew while the fire is out, exactly as the
+  firebox did. The fuel stack and the three burn numbers are saved with the chamber, so a fire
+  survives an unload the way a brew does. Shift-clicking routes fuels to the fuel slot and never
+  into an ingredient well, even when the fuel slot is full.
+- **The flame moved to the brewing screen.** A vanilla-furnace-style flame drawn in the fuel slot's
+  well shrinks as the fuel burns down; the old fuel screen's burn bar and countdown are gone with
+  the screen.
+- **Fuel in a pre-change ignition chamber is lost on upgrade.** The block entity is gone, so the
+  world loads without complaint and the fuel is simply not there any more; a loaded chamber's fuel
+  is untouched.
+
 ## Unreleased — the second play test: sleeping, closing, serving, and a customer that is not Steve
 
 Everything here came out of somebody playing the shop rather than reading it. A night slept through
@@ -423,6 +449,8 @@ is on top of the chamber.
   a count the validator makes: the Air Pressure Valve, the Bellows, the Funnel, the Flue Stack, the
   Resonance Crystal, the Condenser, the Advanced Condenser and Alchemical Tubing. Breaking any of
   them tells the chamber, so losing a valve loses the brew the way losing a tank already did.
+  (Since changed: breaking a part now pauses the brew, and only the chamber's own break ends it —
+  see the machine failure rules entry.)
 - **Alchemical Tubing** carries a tank's or a condenser's connection to the chamber, up to
   `maxTubingLength` blocks along the path. A run longer than that is a fault of its own — "Tubing
   run too long" — rather than the far tank quietly reading as "No tank attached", which would send a
@@ -668,21 +696,22 @@ the brewing screen's layout, the wording of its faults, and a water readout that
 ## Unreleased — machine failure rules
 
 The design's addendum fixes what happens to a brew when the machine stops being a machine. The
-tier-1 code did the opposite of it in two places, and both are now what the design says.
+tier-1 code disagreed with it in two places, and both are now what the design says: a broken part
+pauses the brew instead of ending it, and the brew is saved with the chamber so an unload or a
+restart finds it where it was. Only the chamber's own break ends the brew.
 
 ### Changed
 
-- **A brew is lost, not saved.** It used to be written to the chamber's save data and restored on
-  load, so a chunk that unloaded and came back — or a server restart — carried on brewing where it
-  left off. It no longer does: the brew lives in memory only, and a chamber that comes back from
-  disk is idle with its ingredients and water already spent. The slots still persist, because those
-  are the player's; what does not persist is the brew that was made from them.
-- **Breaking a part of the still loses the brew.** It used to freeze the timer where it was, so a
-  player could knock the tank off, put it back, and carry on. Now the machine breaking is the brew
-  breaking, and the ingredients are gone. This is not a rule polled every tick — a chamber cannot
-  tell a part that was removed from a part whose chunk has unloaded, and guessing would destroy
-  brews that were never broken. The part's block tells the chamber on the way out instead, and the
-  chamber re-validates: breaking a tank the still was not drawing on leaves the brew alone.
+- **A brew is saved, and resumes.** It is written to the chamber's save data — what it is making,
+  its length, and how far it has got — so a chamber that comes back from disk carries on where it
+  left off. A chunk that unloads and comes back, or a server restart, finds the brew intact with
+  its ingredients and water already spent. The slots persist too, because those are the player's.
+- **Breaking a part of the still pauses the brew.** The timer freezes where it is and re-forming
+  the machine resumes it; the contents stay in the chamber, and only breaking the chamber itself
+  ends the brew and drops what was inside. This is not a rule polled every tick — a chamber cannot
+  tell a part that was removed from a part whose chunk has unloaded, and guessing would pause brews
+  that were never broken. The part's block tells the chamber on the way out instead, and the
+  chamber re-validates: breaking a tank the still was not drawing on does not even pause the brew.
 - **The status line says how the machine is doing.** It was a flat "Not assembled" for every
   unformed machine. A sound still now reads `Tier N - Working perfectly.` in green, and a broken one
   names the fault in red — "No tank attached", "Chamber not above ignition" — so a player who built

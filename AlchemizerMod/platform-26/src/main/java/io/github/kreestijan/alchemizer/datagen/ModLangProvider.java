@@ -76,10 +76,9 @@ public final class ModLangProvider extends LanguageProvider {
     // drawn across a panel rather than a missing name in an inventory — the same argument, and the
     // reason they belong here rather than beside the screen that uses them.
     //
-    // "seconds" is the one key two screens share: the pressure chamber's hourglass buttons and the
-    // ignition chamber's fuel countdown both read it, and it is the whole of an hourglass button's
-    // label. One string in one place, because two keys holding the same text are two things to keep
-    // in step.
+    // "seconds" is the key the pressure chamber's hourglass buttons read, and it is the whole of an
+    // hourglass button's label. One string in one place, because two keys holding the same text are
+    // two things to keep in step.
     add("gui.alchemizer.seconds", "%ss");
     add("gui.alchemizer.hourglass.tooltip", "Brew for %s seconds");
     add("gui.alchemizer.start", "Start");

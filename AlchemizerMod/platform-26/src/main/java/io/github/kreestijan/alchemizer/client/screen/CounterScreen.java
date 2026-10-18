@@ -48,7 +48,7 @@ import org.jspecify.annotations.Nullable;
  * are placed in panel coordinates instead. The two are mixed only where the parent class forces it,
  * exactly as on the brewing screens.
  *
- * <p>No {@code @OnlyIn(Dist.CLIENT)}, for the reason given in {@link IgnitionChamberScreen}.
+ * <p>No {@code @OnlyIn(Dist.CLIENT)}, for the reason given in {@link PressureChamberScreen}.
  */
 public class CounterScreen extends AbstractContainerScreen<CounterMenu> {
 

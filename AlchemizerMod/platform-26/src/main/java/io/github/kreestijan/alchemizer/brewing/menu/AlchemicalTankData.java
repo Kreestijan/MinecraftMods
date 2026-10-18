@@ -7,7 +7,7 @@ import net.minecraft.world.inventory.ContainerData;
 /**
  * The pair of numbers a tank screen needs, read straight from the tank.
  *
- * <p>Shaped after {@link IgnitionChamberData}, and for the same reason: the indices below are the
+ * <p>Shaped after {@link PressureChamberData}, and for the same reason: the indices below are the
  * screen's business, so a tank that carried them would have to change whenever a gauge moved.
  *
  * <p>Only the server ever holds one of these. The client's menu is handed a plain mutable store of

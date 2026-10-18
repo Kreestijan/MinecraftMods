@@ -31,7 +31,7 @@ public final class PressureChamberData implements ContainerData {
   /** Millibuckets those tanks hold between them. */
   public static final int WATER_CAPACITY = 3;
 
-  /** One when the firebox below is burning, zero when it is cold. */
+  /** One when the chamber's fire is burning, zero when it is cold. */
   public static final int LIT = 4;
 
   /** One when the blocks around the chamber form a still. */
@@ -72,8 +72,14 @@ public final class PressureChamberData implements ContainerData {
   /** One when batch brewing is switched on, zero when it is off. */
   public static final int BATCH_ENABLED = 12;
 
+  /** Ticks of burn left on the fuel alight. */
+  public static final int BURN_REMAINING = 13;
+
+  /** How long that fuel was going to burn for, so the flame can be a fraction of something. */
+  public static final int BURN_TOTAL = 14;
+
   /** How many numbers this view has; also the size of the client's store. */
-  public static final int COUNT = 13;
+  public static final int COUNT = 15;
 
   private final PressureChamberBlockEntity chamber;
 
@@ -110,6 +116,8 @@ public final class PressureChamberData implements ContainerData {
       case BATCH_MULTIPLIER -> chamber.effectiveBatch();
       case BATCH_MAXIMUM -> chamber.maximumBatch();
       case BATCH_ENABLED -> chamber.batchEnabled() ? 1 : 0;
+      case BURN_REMAINING -> chamber.burnRemainingTicks();
+      case BURN_TOTAL -> chamber.burnTotalTicks();
       default ->
           throw new IndexOutOfBoundsException(
               "Pressure chamber data has " + COUNT + " entries, got " + dataId);

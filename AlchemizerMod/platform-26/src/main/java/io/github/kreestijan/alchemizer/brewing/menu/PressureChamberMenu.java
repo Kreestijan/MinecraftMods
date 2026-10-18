@@ -27,9 +27,9 @@ import net.neoforged.neoforge.attachment.AttachmentType;
 /**
  * The brewing screen's slot layout, its buttons, and its view of the brew.
  *
- * <p>Every slot defers its "may this go in?" question to the chamber's own answer, for the reason
- * given in {@link IgnitionChamberMenu}: a vanilla slot does not consult the container, so a slot
- * that did not ask would quietly accept anything.
+ * <p>Every slot defers its "may this go in?" question to {@link
+ * PressureChamberBlockEntity#canPlaceItem}: a vanilla slot does not consult the container, so a
+ * slot that did not ask would quietly accept anything.
  *
  * <p>The enhancer slots are here rather than added later, and are inactive. They are the two slots
  * the design reserves for the enhancement chain, which is out of scope at tier 1; giving them their
@@ -165,6 +165,17 @@ public class PressureChamberMenu extends AbstractContainerMenu {
   private static final int ENHANCER_PITCH = 20;
 
   /**
+   * The fuel slot, at the foot of the left-hand column below the enhancers.
+   *
+   * <p>Public because the screen draws the flame inside this well, which is one pixel in from the
+   * slot on every side. Its recess is drawn in the panel artwork at one pixel up-left of the slot,
+   * as every well's is.
+   */
+  public static final int FUEL_X = 7;
+
+  public static final int FUEL_Y = 109;
+
+  /**
    * The player inventory's origin.
    *
    * <p>Well below vanilla's 84. The panel here is taller than the standard one, because the machine
@@ -238,6 +249,7 @@ public class PressureChamberMenu extends AbstractContainerMenu {
               ENHANCER_Y + i * ENHANCER_PITCH));
     }
     addSlot(new MachineSlot(chamber, PressureChamberBlockEntity.SLOT_OUTPUT, OUTPUT_X, OUTPUT_Y));
+    addSlot(new MachineSlot(chamber, PressureChamberBlockEntity.SLOT_FUEL, FUEL_X, FUEL_Y));
 
     addDataSlots(data);
     addStandardInventorySlots(inventory, INVENTORY_X, INVENTORY_Y);
@@ -284,15 +296,28 @@ public class PressureChamberMenu extends AbstractContainerMenu {
         return ItemStack.EMPTY;
       }
     } else {
-      boolean placed =
-          isBottle(inSlot)
-              ? moveItemStackTo(
-                  inSlot,
-                  PressureChamberBlockEntity.SLOT_BOTTLE,
-                  PressureChamberBlockEntity.SLOT_BOTTLE + 1,
-                  false)
-              : moveItemStackTo(
-                  inSlot, INGREDIENT_SLOT_START, PressureChamberBlockEntity.SLOT_BOTTLE, false);
+      boolean placed;
+      if (chamber.canPlaceItem(PressureChamberBlockEntity.SLOT_FUEL, inSlot)) {
+        // A fuel aims at the fuel slot, and a fuel slot that is full is a refusal, not a reason to
+        // fall through: a coal must never land in an ingredient well.
+        placed =
+            moveItemStackTo(
+                inSlot,
+                PressureChamberBlockEntity.SLOT_FUEL,
+                PressureChamberBlockEntity.SLOT_FUEL + 1,
+                false);
+      } else if (isBottle(inSlot)) {
+        placed =
+            moveItemStackTo(
+                inSlot,
+                PressureChamberBlockEntity.SLOT_BOTTLE,
+                PressureChamberBlockEntity.SLOT_BOTTLE + 1,
+                false);
+      } else {
+        placed =
+            moveItemStackTo(
+                inSlot, INGREDIENT_SLOT_START, PressureChamberBlockEntity.SLOT_BOTTLE, false);
+      }
       if (!placed) {
         return ItemStack.EMPTY;
       }
@@ -444,10 +469,22 @@ public class PressureChamberMenu extends AbstractContainerMenu {
   }
 
   /**
-   * @return whether the firebox below is burning
+   * @return whether the chamber's fire is burning
    */
   public boolean isLit() {
     return data.get(PressureChamberData.LIT) != 0;
+  }
+
+  /**
+   * @return how much of the current fuel is left, from zero to one; zero when the chamber is cold
+   */
+  public float burnProgress() {
+    int total = data.get(PressureChamberData.BURN_TOTAL);
+    if (total <= 0) {
+      return 0.0F;
+    }
+    return Math.min(
+        1.0F, Math.max(0, data.get(PressureChamberData.BURN_REMAINING)) / (float) total);
   }
 
   /**

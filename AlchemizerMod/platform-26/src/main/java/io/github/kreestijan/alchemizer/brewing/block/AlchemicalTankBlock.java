@@ -74,9 +74,10 @@ public class AlchemicalTankBlock extends BaseEntityBlock {
   /**
    * Tells any still this tank was feeding that it has lost a part.
    *
-   * <p>A tank is part of the machine, so taking it away mid-brew loses the brew. The chamber
-   * revalidates before believing it, which is what keeps a tank that merely stood nearby — never
-   * connected, never part of the still — from costing a player their ingredients.
+   * <p>A tank is part of the machine, so taking it away mid-brew pauses the brew until the still is
+   * whole again. The chamber revalidates before believing it, which is what keeps a tank that
+   * merely stood nearby — never connected, never part of the still — from pausing a brew it had
+   * nothing to do with.
    *
    * <p>It fires for every way a block can leave the world, a player's pickaxe, an explosion and a
    * piston alike, because all of them go through the same block change.

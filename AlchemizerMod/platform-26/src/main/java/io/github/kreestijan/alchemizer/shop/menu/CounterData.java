@@ -12,7 +12,7 @@ import net.minecraft.world.inventory.ContainerData;
  * The handful of numbers a Counter screen needs, read straight from the shop.
  *
  * <p>This exists instead of the block entity implementing {@link ContainerData} itself, for the
- * reason given in {@code IgnitionChamberData}: the indices below are the screen's business, and a
+ * reason given in {@code PressureChamberData}: the indices below are the screen's business, and a
  * block entity that had to carry them would change whenever a gauge moved.
  *
  * <p><b>Everything here is a number, and the names are not.</b> The lists a Counter draws are names

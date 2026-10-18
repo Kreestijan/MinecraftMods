@@ -58,7 +58,9 @@ public class PressureChamberBlock extends BaseEntityBlock {
    *
    * <p>Everything the screen draws comes from the block entity through the menu's data slots, so
    * opening it is the whole of what the block does — there is no state to hand over and no packet
-   * to send. See {@link IgnitionChamberBlock#useWithoutItem} for why this is server-only.
+   * to send. The screen is opened only on the server, and the client is told by the open-menu
+   * packet; a client that opened its own screen would be looking at a container the server never
+   * made, and a click in it would be discarded.
    */
   @Override
   protected InteractionResult useWithoutItem(
@@ -73,6 +75,25 @@ public class PressureChamberBlock extends BaseEntityBlock {
               Component.translatable(TITLE_KEY)));
     }
     return InteractionResult.SUCCESS;
+  }
+
+  /**
+   * Puts out the firebox when the chamber goes.
+   *
+   * <p>The fire lives in the chamber's block entity, so a chamber that leaves the world must not
+   * leave a glowing firebox behind it. The firebox itself may already be gone — an explosion takes
+   * both — which is what the position's guards are for.
+   *
+   * @param state the block state being removed
+   * @param level the server level
+   * @param pos where the block was
+   * @param movedByPiston whether a piston moved it rather than it being destroyed
+   */
+  @Override
+  protected void affectNeighborsAfterRemoval(
+      BlockState state, ServerLevel level, BlockPos pos, boolean movedByPiston) {
+    super.affectNeighborsAfterRemoval(state, level, pos, movedByPiston);
+    PressureChamberBlockEntity.writeFireboxLit(level, pos.below(), false);
   }
 
   /**

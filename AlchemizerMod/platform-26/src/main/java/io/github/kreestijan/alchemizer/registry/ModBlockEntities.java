@@ -2,7 +2,6 @@ package io.github.kreestijan.alchemizer.registry;
 
 import io.github.kreestijan.alchemizer.Alchemizer;
 import io.github.kreestijan.alchemizer.brewing.blockentity.AlchemicalTankBlockEntity;
-import io.github.kreestijan.alchemizer.brewing.blockentity.IgnitionChamberBlockEntity;
 import io.github.kreestijan.alchemizer.brewing.blockentity.PressureChamberBlockEntity;
 import io.github.kreestijan.alchemizer.shop.blockentity.CounterBlockEntity;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -30,15 +29,6 @@ public final class ModBlockEntities {
 
   public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITIES =
       DeferredRegister.create(BuiltInRegistries.BLOCK_ENTITY_TYPE, Alchemizer.MOD_ID);
-
-  public static final DeferredHolder<
-          BlockEntityType<?>, BlockEntityType<IgnitionChamberBlockEntity>>
-      IGNITION_CHAMBER =
-          BLOCK_ENTITIES.register(
-              "ignition_chamber",
-              () ->
-                  new BlockEntityType<>(
-                      IgnitionChamberBlockEntity::new, ModBlocks.IGNITION_CHAMBER.get()));
 
   public static final DeferredHolder<
           BlockEntityType<?>, BlockEntityType<PressureChamberBlockEntity>>

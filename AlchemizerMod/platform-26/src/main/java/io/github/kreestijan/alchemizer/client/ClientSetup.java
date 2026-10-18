@@ -5,7 +5,6 @@ import io.github.kreestijan.alchemizer.client.customer.CustomerRenderer;
 import io.github.kreestijan.alchemizer.client.screen.AlchemicalTankScreen;
 import io.github.kreestijan.alchemizer.client.screen.CounterScreen;
 import io.github.kreestijan.alchemizer.client.screen.CustomerDialogueScreen;
-import io.github.kreestijan.alchemizer.client.screen.IgnitionChamberScreen;
 import io.github.kreestijan.alchemizer.client.screen.PressureChamberScreen;
 import io.github.kreestijan.alchemizer.registry.ModEntities;
 import io.github.kreestijan.alchemizer.registry.ModMenus;
@@ -43,7 +42,6 @@ public final class ClientSetup {
    */
   @SubscribeEvent
   public static void onRegisterMenuScreens(RegisterMenuScreensEvent event) {
-    event.register(ModMenus.IGNITION_CHAMBER.get(), IgnitionChamberScreen::new);
     event.register(ModMenus.PRESSURE_CHAMBER.get(), PressureChamberScreen::new);
     event.register(ModMenus.ALCHEMICAL_TANK.get(), AlchemicalTankScreen::new);
     event.register(ModMenus.COUNTER.get(), CounterScreen::new);

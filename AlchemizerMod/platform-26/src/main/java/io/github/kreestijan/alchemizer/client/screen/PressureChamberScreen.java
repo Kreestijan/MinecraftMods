@@ -79,7 +79,10 @@ import org.jetbrains.annotations.Nullable;
  * the gauge is now the gauge's hover tooltip, in millibuckets, and the same reading is on the
  * tank's own screen and on the tank item — one number, three places, one wording.
  *
- * <p>No {@code @OnlyIn(Dist.CLIENT)}, for the reason given in {@link IgnitionChamberScreen}.
+ * <p>No {@code @OnlyIn(Dist.CLIENT)}. The annotation stopped stripping classes at runtime in this
+ * version, so it no longer protects a screen registered from a client event, and a class reached
+ * only from {@code ClientSetup} needs no annotation at all — the same holds for every other screen
+ * in this mod.
  */
 public class PressureChamberScreen extends AbstractContainerScreen<PressureChamberMenu> {
 
@@ -414,6 +417,18 @@ public class PressureChamberScreen extends AbstractContainerScreen<PressureChamb
 
   /** The brew bar's amber, cut to the width the brew has got through. */
   private static final Identifier BREW_BAR_FILL = machine("brew_bar_fill");
+
+  /**
+   * The flame in the fuel slot's well, drawn furnace-style: a sub-rectangle of the sprite rising
+   * from the bottom of the well while the fire burns, behind whatever fuel sits in the slot.
+   */
+  private static final Identifier FLAME_FILL = machine("flame_fill");
+
+  private static final int FLAME_X = PressureChamberMenu.FUEL_X + 2;
+
+  private static final int FLAME_Y = PressureChamberMenu.FUEL_Y + 2;
+
+  private static final int FLAME_SIZE = 14;
 
   /** The translucent red laid over a slot holding something a brew still needs. */
   private static final Identifier SLOT_MISSING = machine("slot_missing");
@@ -1022,6 +1037,7 @@ public class PressureChamberScreen extends AbstractContainerScreen<PressureChamb
 
     drawTank(graphics, readiness);
     drawBrewBar(graphics);
+    drawFlame(graphics);
     drawBatchControl(graphics, readiness);
     drawMissingSlots(graphics, readiness);
     drawStatus(graphics, readiness);
@@ -1174,6 +1190,33 @@ public class PressureChamberScreen extends AbstractContainerScreen<PressureChamb
         BAR_HEIGHT,
         BAR_WIDTH,
         BAR_HEIGHT);
+  }
+
+  /**
+   * Draws the flame inside the fuel slot's well while the chamber's fire burns.
+   *
+   * <p>Furnace-style: the sprite is cut from the bottom up as the fuel burns down, and the flame
+   * sits behind the slot's item because the background pass runs before items render. Nothing is
+   * drawn when the chamber is cold — the well's recess is the panel's own art.
+   *
+   * @param graphics the frame being extracted
+   */
+  private void drawFlame(GuiGraphicsExtractor graphics) {
+    if (!menu.isLit()) {
+      return;
+    }
+    int flameHeight = Math.max(1, Math.round(menu.burnProgress() * FLAME_SIZE));
+    graphics.blit(
+        RenderPipelines.GUI_TEXTURED,
+        FLAME_FILL,
+        leftPos + FLAME_X,
+        topPos + FLAME_Y + FLAME_SIZE - flameHeight,
+        0.0F,
+        (float) (FLAME_SIZE - flameHeight),
+        FLAME_SIZE,
+        flameHeight,
+        FLAME_SIZE,
+        FLAME_SIZE);
   }
 
   /**

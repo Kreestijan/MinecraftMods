@@ -30,7 +30,7 @@ import net.minecraft.world.entity.player.Inventory;
  * are placed in panel coordinates instead; the two conventions are mixed only where the parent
  * class forces it.
  *
- * <p>No {@code @OnlyIn(Dist.CLIENT)}, for the reason given in {@link IgnitionChamberScreen}.
+ * <p>No {@code @OnlyIn(Dist.CLIENT)}, for the reason given in {@link PressureChamberScreen}.
  */
 public class AlchemicalTankScreen extends AbstractContainerScreen<AlchemicalTankMenu> {
 

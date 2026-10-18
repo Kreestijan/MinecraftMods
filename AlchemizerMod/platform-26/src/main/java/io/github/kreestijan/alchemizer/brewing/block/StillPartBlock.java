@@ -21,9 +21,9 @@ import net.minecraft.world.level.block.state.BlockState;
  * <p>The single behaviour they do share is the point of this class. A part that is broken has to
  * tell the nearest pressure chamber, and that is not a courtesy: the chamber decides once, when the
  * machine is assembled, how long a brew takes and how many potions it yields, and then holds that
- * answer for the length of the run. Without this call, pulling a valve out of a working still mid
- * brew would leave the brew running on a machine that no longer exists. See {@link
- * PressureChamberBlockEntity#partRemovedNear}.
+ * answer for the length of the run. Without this call, pulling a valve out of a working still
+ * mid-brew would leave the brew advancing on the strength of an answer about a machine that no
+ * longer exists. See {@link PressureChamberBlockEntity#partRemovedNear}.
  */
 public class StillPartBlock extends Block {
 

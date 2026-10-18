@@ -1,10 +1,16 @@
 package io.github.kreestijan.alchemizer.brewing.blockentity;
 
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import io.github.kreestijan.alchemizer.Alchemizer;
+import io.github.kreestijan.alchemizer.brewing.block.IgnitionChamberBlock;
+import io.github.kreestijan.alchemizer.common.fuel.FuelTags;
 import io.github.kreestijan.alchemizer.common.item.StackSignatureFactory;
 import io.github.kreestijan.alchemizer.common.potion.PotionBuilder;
 import io.github.kreestijan.alchemizer.config.ConfigCache;
 import io.github.kreestijan.alchemizer.core.batch.BatchCost;
+import io.github.kreestijan.alchemizer.core.fuel.BurnState;
+import io.github.kreestijan.alchemizer.core.fuel.BurnTracker;
 import io.github.kreestijan.alchemizer.core.fuel.FuelRules;
 import io.github.kreestijan.alchemizer.core.fuel.FuelTier;
 import io.github.kreestijan.alchemizer.core.machine.StillProblem;
@@ -30,15 +36,18 @@ import java.util.Optional;
 import java.util.Set;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.world.Container;
 import net.minecraft.world.ContainerHelper;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.storage.ValueInput;
@@ -48,10 +57,13 @@ import org.jetbrains.annotations.Nullable;
 /**
  * The Pressure Chamber's block entity: the still, as far as the rest of the mod is concerned.
  *
- * <p>It holds the ingredients, the bottle, and the brew in progress, and it is where every rule
- * about brewing is applied. The rules themselves are not here — they are in {@code core}, where
- * they can be unit-tested without a world — and this class is the assembly of them: read the slots,
- * ask the recipe book, take the water, watch the fire, hand back what came out.
+ * <p>It holds the ingredients, the bottle, the fuel, and the brew in progress, and it is where
+ * every rule about brewing is applied. The fire is this chamber's too: it lights the fuel only
+ * while a brew wants it, and it writes the lit state onto the ignition chamber below, which has no
+ * block entity of its own and glows because this class tells it to. The rules themselves are not
+ * here — they are in {@code core}, where they can be unit-tested without a world — and this class
+ * is the assembly of them: read the slots, ask the recipe book, take the water, watch the fire,
+ * hand back what came out.
  *
  * <p><b>Ingredients are spent when the brew starts, not when it finishes.</b> That is what makes a
  * failure cost something. If the still kept the ingredients until the end, a player could watch a
@@ -59,14 +71,16 @@ import org.jetbrains.annotations.Nullable;
  * gamble. It also removes a whole class of question — what happens if a slot is emptied halfway
  * through — because after the start there is nothing left in the slots to change.
  *
- * <p><b>A brew pauses when the fire goes out, and is lost when the machine does.</b> Those are two
- * different things and they are treated differently. Running out of fuel holds the progress where
- * it is, and lighting the fire again resumes it: the player has paid for the time they have spent,
- * and taking it back would make the machine feel arbitrary rather than demanding. But the brew is
- * spent for good the moment the machine stops being a machine — the chunk unloading, the server
- * restarting, or any part of the still being taken away. It is not saved, and there is nothing to
- * rebuild towards; a chamber that comes back is idle. That is what makes the ingredients cost
- * something.
+ * <p><b>A brew pauses when the fire goes out or the machine comes apart, and is lost only with the
+ * chamber itself.</b> Running out of fuel holds the progress where it is, and lighting the fire
+ * again resumes it: the player has paid for the time they have spent, and taking it back would make
+ * the machine feel arbitrary rather than demanding. The same holds when a part of the still is
+ * taken away mid-brew: the timer stops where it is, the contents stay in the chamber, and putting
+ * the part back resumes it. The brew is written down with the chamber, so a chunk that unloads or a
+ * server that restarts finds the brew where it was and carries on; while the machine stands broken
+ * the fire already lit still burns down, because a brew still exists to be fed. Only breaking the
+ * chamber itself ends the brew: its contents drop, the brew dies with the block entity, and the
+ * ingredients, bottles and water spent at the start stay spent.
  *
  * <p>Nothing here exposes a capability, on purpose. A still is worked by hand: no hopper may load
  * its ingredients or empty its output, or it stops being a machine a player operates and becomes
@@ -115,14 +129,35 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
    */
   public static final int SLOT_OUTPUT = SLOT_ENHANCER_FIRST + SLOT_ENHANCER_COUNT;
 
+  /**
+   * Where the fuel goes.
+   *
+   * <p>Appended after the output slot, so that every index that meant something before this slot
+   * existed still means the same thing — the same rule the output slot followed when it was added.
+   */
+  public static final int SLOT_FUEL = SLOT_OUTPUT + 1;
+
   /** Every slot this machine has. */
-  public static final int SLOT_COUNT = SLOT_OUTPUT + 1;
+  public static final int SLOT_COUNT = SLOT_FUEL + 1;
 
   /** The saved stand-in for a brew that is going to fail. No potion id can be empty. */
   private static final String MURKY_RESULT = "";
 
   /** The tier a failed brew demands, since no recipe is there to name one. */
   private static final int MURKY_TIER = 1;
+
+  /** Save key for the brew in progress, also the key a {@code /data} command addresses. */
+  private static final String KEY_BREW = "brew";
+
+  /**
+   * Save keys for the fire. The fuel stack itself rides in the slots list, so there is no fuel key;
+   * these three numbers are the fire made from the stack.
+   */
+  private static final String KEY_BURN_REMAINING = "burn_remaining";
+
+  private static final String KEY_BURN_TOTAL = "burn_total";
+
+  private static final String KEY_BURN_TIER = "burn_tier";
 
   private final StillCache still = new StillCache();
 
@@ -132,6 +167,28 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
 
   /** What the running brew will produce, or null when nothing is running. */
   private @Nullable PlannedBrew planned;
+
+  /**
+   * What is alight, if anything.
+   *
+   * <p>The fuel stack lives in the fuel slot until it is lit; this is the fire made from it.
+   * Deliberately two different things: one item leaves the slot when the fire is lit and the next
+   * when the fire goes out, which is what makes a stack of coal behave the way a player expects a
+   * stack of coal to behave. Nothing lights until a brew wants it.
+   */
+  private BurnState burn = BurnState.cold();
+
+  /**
+   * How long the fuel currently alight was going to burn for, so a flame can draw a fraction rather
+   * than a countdown.
+   */
+  private int burnTotalTicks;
+
+  /**
+   * The last item this chamber refused to light, so the refusal is reported once instead of every
+   * tick. Not saved: it exists only to keep one run's log readable.
+   */
+  private @Nullable Item unlightableReported;
 
   /**
    * The last answer {@link #nextBrew} gave, so that a question asked every tick is answered once.
@@ -180,6 +237,30 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
    * @param batch how many potions this run produces, fixed when it starts
    */
   private record PlannedBrew(String potionId, int tier, int batch) {}
+
+  /**
+   * The saved shape of a brew in progress.
+   *
+   * <p>{@link PlannedBrew} is the in-memory commitment and {@link BrewSession} is a core record
+   * with no codec, so neither can be written as it is; this joins the two into one field so a save
+   * writes the brew atomically or not at all. Deliberately carries no validation: a throwing
+   * constructor inside a codec decode would turn a malformed save into an exception, and the
+   * rejection of an implausible but decodable record lives in {@link #restoreBrew}.
+   */
+  private record SavedBrew(String potionId, int tier, int batch, int totalTicks, int elapsedTicks) {
+
+    static final Codec<SavedBrew> CODEC =
+        RecordCodecBuilder.create(
+            instance ->
+                instance
+                    .group(
+                        Codec.STRING.fieldOf("potion_id").forGetter(SavedBrew::potionId),
+                        Codec.INT.fieldOf("tier").forGetter(SavedBrew::tier),
+                        Codec.INT.fieldOf("batch").forGetter(SavedBrew::batch),
+                        Codec.INT.fieldOf("total_ticks").forGetter(SavedBrew::totalTicks),
+                        Codec.INT.fieldOf("elapsed_ticks").forGetter(SavedBrew::elapsedTicks))
+                    .apply(instance, SavedBrew::new));
+  }
 
   /**
    * What a brew started right now would be, and what it would make.
@@ -282,13 +363,14 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
   /**
    * Tells every chamber near a part that has just left the world to reconsider itself.
    *
-   * <p>This is how a still learns it has been broken. It is called from the part's block, on the
-   * removal path itself, rather than from a rule polled every tick — and that distinction is the
-   * whole design. A validator cannot tell a cell that is empty from a cell whose chunk is not
-   * loaded, because it reads the world through a view that answers "nothing here" to both. A
-   * per-tick "the still is unformed, so lose the brew" would therefore destroy brews that were
-   * never broken, the moment a player walked far enough away. A removal hook asks the one question
-   * that has a real answer: did a part actually go?
+   * <p>This is how a still learns, the moment it happens, that one of its parts has gone. It is
+   * called from the part's block, on the removal path itself, rather than from a rule polled every
+   * tick — and that distinction still matters. A validator cannot tell a cell that is empty from a
+   * cell whose chunk is not loaded, because it reads the world through a view that answers "nothing
+   * here" to both; a per-tick "the still is unformed" can therefore only pause, and a stale cache
+   * would keep the brew advancing on a machine that is already gone. The removal hook marks the
+   * cache dirty at the moment a part actually leaves, so the brew stops on the very next tick; the
+   * per-tick check stays as the fallback for a machine the validator cannot see all of.
    *
    * <p>The scan radius is the validator's own, which is the furthest a chamber could be and still
    * have had this cell as a part.
@@ -324,20 +406,16 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
   }
 
   /**
-   * Re-checks this chamber now that a machine part near it has been taken away, and gives up the
-   * brew if the still is no longer whole.
+   * Marks this chamber dirty now that a machine part near it has been taken away.
    *
-   * <p>The still is re-scanned rather than assumed broken. A tank standing next to a working still
-   * but not connected to it is a perfectly ordinary thing to have, and breaking that one must leave
-   * the brew alone; only a fresh look can tell the two cases apart.
+   * <p>The still is re-scanned by the next reader rather than assumed broken, and the brew is held
+   * rather than thrown away: if the still is no longer whole the brew pauses on the next tick and
+   * resumes when the machine is whole again. A tank standing next to a working still but not
+   * connected to it is a perfectly ordinary thing to have, and breaking that one changes nothing —
+   * the fresh validation still finds a whole machine, and the brew never pauses.
    */
   private void onPartRemoved() {
     markStillDirty();
-    if (planned != null && !still().isFormed()) {
-      planned = null;
-      session = BrewSession.idle();
-      setChanged();
-    }
   }
 
   /**
@@ -381,58 +459,137 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
   }
 
   private void tick(Level level) {
+    boolean wasLit = burn.isLit();
+
+    if (wasLit) {
+      // Once alight, a fuel burns to exhaustion whether or not anything is brewing. Only the
+      // lighting is gated on a brew wanting the fire; gating the burn-down as well would mean a
+      // coal that stops burning whenever the player closes the screen, which is not what a fuel is.
+      burn = BurnTracker.tick(burn);
+      if (!burn.isLit()) {
+        // The fire is out; the flame has nothing left to be a fraction of.
+        burnTotalTicks = 0;
+      }
+    } else if (wantsFire()) {
+      lightNextFuel(level);
+    }
+
     PlannedBrew current = planned;
-    if (current == null) {
-      return;
+    if (current != null) {
+      if (session.isRunning() && canProgress(current)) {
+        session = session.advance(true);
+        setChanged();
+      }
+
+      if (session.isComplete()) {
+        finish(current);
+      }
     }
 
-    if (session.isRunning() && canProgress(level, current)) {
-      session = session.advance(true);
+    boolean isLit = burn.isLit();
+    // Runs even with no brew: a cold chamber must still put out a stale lit firebox, and a lit
+    // one must keep it lit. The per-tick cost is one isLoaded plus one block-state read per
+    // chamber; setBlock fires only on the transition.
+    writeFireboxLit(level, worldPosition.below(), isLit);
+    if (wasLit || isLit) {
       setChanged();
-    }
-
-    if (session.isComplete()) {
-      finish(current);
     }
   }
 
   /**
+   * Writes the lit state onto the ignition chamber below, which has no block entity of its own.
+   *
+   * <p>The firebox glows because the chamber burns. Compare-then-set, so the block state is written
+   * only when the fire actually changes; guarded against an unloaded firebox chunk and a
+   * non-ignition block below, either of which means there is nothing to tell.
+   *
+   * <p>Public because the chamber's own block calls it on the removal path, to put the firebox out
+   * when the chamber goes.
+   *
    * @param level the server level
+   * @param firebox where the ignition chamber should be
+   * @param lit whether the fire is alight
+   */
+  public static void writeFireboxLit(Level level, BlockPos firebox, boolean lit) {
+    if (!level.isLoaded(firebox)) {
+      return;
+    }
+    BlockState state = level.getBlockState(firebox);
+    if (state.getBlock() instanceof IgnitionChamberBlock
+        && state.getValue(IgnitionChamberBlock.LIT) != lit) {
+      // UPDATE_ALL rather than a lighter flag: the lit state is what a client renders, so it has
+      // to reach the client, and the neighbours care because the light level changes with it.
+      level.setBlock(firebox, state.setValue(IgnitionChamberBlock.LIT, lit), Block.UPDATE_ALL);
+    }
+  }
+
+  /**
    * @param current the brew in progress
    * @return whether the brew may advance this tick
    */
-  private boolean canProgress(Level level, PlannedBrew current) {
+  private boolean canProgress(PlannedBrew current) {
     ValidationResult formed = still();
     if (!formed.isFormed()) {
       // A still that is not whole is not a working machine, so the brew stops. It is held rather
-      // than thrown away here, because this is the fallback path: a part that is really removed
-      // discards the brew at the moment it goes, in onPartRemoved. What is left for this check is a
-      // machine the validator cannot see all of — a part whose chunk has unloaded — and holding is
-      // the honest answer to that, since nothing was broken.
+      // than thrown away: a removed part pauses the brew until the machine is whole again, and a
+      // machine the validator cannot see all of — a part whose chunk has unloaded — is held too,
+      // since nothing was broken.
       return false;
     }
     Tuning tuning = ConfigCache.current();
-    return FuelRules.mayBrew(burningFuel(level), formed.tier().tier(), current.tier(), tuning);
+    return FuelRules.mayBrew(burn.fuel(), formed.tier().tier(), current.tier(), tuning);
   }
 
   /**
-   * Reads the fire out of the ignition chamber this still is built on.
+   * Takes one item from the fuel slot and sets it alight, if it can be.
    *
-   * <p>The position is not searched for: a formed tier-1 still has exactly one ignition chamber and
-   * the validator requires it to be the cell below the pressure chamber, so asking anywhere else
-   * would be asking a question already answered.
+   * <p>Two separate questions, and both have to be answered yes. The tag decides what tier the fuel
+   * is worth, and the vanilla fuel table decides how long it burns; an item with a tier and no burn
+   * time would light a fire that goes out on the same tick, and an item with a burn time and no
+   * tier would burn without ever being able to power a brew. Rather than guess, the chamber leaves
+   * the item alone and says so once.
    *
-   * @param level the server level
-   * @return the fuel alight below, or empty when there is no fire
+   * @param level the server level, which is where the fuel table lives
    */
-  private Optional<FuelTier> burningFuel(Level level) {
-    BlockPos firebox = worldPosition.below();
-    if (!level.isLoaded(firebox)) {
-      return Optional.empty();
+  private void lightNextFuel(Level level) {
+    ItemStack fuel = items.get(SLOT_FUEL);
+    if (fuel.isEmpty()) {
+      return;
     }
-    return level.getBlockEntity(firebox) instanceof IgnitionChamberBlockEntity chamber
-        ? chamber.burningFuel()
-        : Optional.empty();
+    Optional<FuelTier> tier = FuelTags.tierOf(fuel);
+    // The recipe type is null because a fuel table is not per-recipe-type in this version: the
+    // same number answers for smelting, blasting and this chamber alike.
+    int burnTicks = fuel.getBurnTime(null, level.fuelValues());
+
+    if (tier.isEmpty() || burnTicks <= 0) {
+      reportUnlightable(tier, burnTicks);
+      return;
+    }
+
+    burn = BurnState.burning(burnTicks, tier.get());
+    burnTotalTicks = burnTicks;
+    unlightableReported = null;
+    removeItem(SLOT_FUEL, 1);
+  }
+
+  /**
+   * @param tier the tier the item resolved to, if any
+   * @param burnTicks what the fuel table says, which may be zero
+   */
+  private void reportUnlightable(Optional<FuelTier> tier, int burnTicks) {
+    Item item = items.get(SLOT_FUEL).getItem();
+    if (item == unlightableReported) {
+      return;
+    }
+    unlightableReported = item;
+    Alchemizer.LOGGER.warn(
+        "Pressure chamber at {} will not light {}: fuel tier {} and burn time {} ticks."
+            + " A fuel needs both an entry in the alchemizer fuel tier tags and a burn time in"
+            + " the neoforge:furnace_fuels data map.",
+        worldPosition,
+        BuiltInRegistries.ITEM.getKey(item),
+        tier.map(FuelTier::tier).map(String::valueOf).orElse("none"),
+        burnTicks);
   }
 
   /**
@@ -678,10 +835,10 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
   }
 
   /**
-   * @return whether the fire below should be burning: a brew is under way, unfinished, and the
-   *     still is whole
+   * @return whether the fire should be burning: a brew is under way, unfinished, and the still is
+   *     whole
    */
-  public boolean wantsFire() {
+  private boolean wantsFire() {
     return planned != null && session.isRunning() && still().isFormed();
   }
 
@@ -744,12 +901,25 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
   }
 
   /**
-   * @return whether the firebox below is burning, which is not the same as whether a brew may
+   * @return whether the chamber's fire is burning, which is not the same as whether a brew may
    *     advance — a wood fire is lit and powers nothing
    */
   public boolean isLit() {
-    Level level = getLevel();
-    return level != null && burningFuel(level).isPresent();
+    return burn.isLit();
+  }
+
+  /**
+   * @return ticks of burn left on the fuel alight, or zero when the chamber is cold
+   */
+  public int burnRemainingTicks() {
+    return burn.remainingTicks();
+  }
+
+  /**
+   * @return how long the fuel alight was going to burn for, or zero when the chamber is cold
+   */
+  public int burnTotalTicks() {
+    return burnTotalTicks;
   }
 
   /**
@@ -1214,24 +1384,118 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
   }
 
   /**
-   * Writes the chamber's slots, and deliberately nothing else.
+   * Writes the chamber's slots, the brew in progress, and the fire.
    *
-   * <p>A brew in progress is not saved. It is spent the moment it starts — the ingredients, the
-   * bottles and the water are already gone — and a chamber that comes back from disk is a chamber
-   * with nothing brewing, which is the same state it is in after a reload for any other reason. The
-   * slots still persist, because those are the player's, not the brew's.
+   * <p>The brew is saved as one field — what it is making, and how far it has got — so a chamber
+   * that comes back from disk carries on where it left off, and a save with nothing brewing writes
+   * no brew at all. The slots persist because those are the player's; what does not persist is a
+   * chamber that was broken, whose brew died with the block entity. The fire is three numbers: the
+   * fuel stack itself rides in the slots, and what is saved is the fire made from it.
    */
   @Override
   protected void saveAdditional(ValueOutput output) {
     super.saveAdditional(output);
     ContainerHelper.saveAllItems(output, items);
+    PlannedBrew current = planned;
+    SavedBrew saved =
+        current == null
+            ? null
+            : new SavedBrew(
+                current.potionId(),
+                current.tier(),
+                current.batch(),
+                session.totalTicks(),
+                session.elapsedTicks());
+    output.storeNullable(KEY_BREW, SavedBrew.CODEC, saved);
+    output.putInt(KEY_BURN_REMAINING, burn.remainingTicks());
+    output.putInt(KEY_BURN_TOTAL, burnTotalTicks);
+    output.putInt(KEY_BURN_TIER, burn.fuelTier());
   }
 
   @Override
   protected void loadAdditional(ValueInput input) {
     super.loadAdditional(input);
     ContainerHelper.loadAllItems(input, items);
+    restoreBrew(input);
+    burnTotalTicks = Math.max(0, input.getIntOr(KEY_BURN_TOTAL, 0));
+    burn =
+        readBurn(
+            input.getIntOr(KEY_BURN_REMAINING, 0),
+            input.getIntOr(KEY_BURN_TIER, BurnState.NO_FUEL_TIER));
     invalidateNextBrew();
+  }
+
+  /**
+   * Rebuilds the burn state from a save, putting the fire out rather than failing if the two
+   * numbers disagree.
+   *
+   * <p>A chamber that loses its remaining burn time loses nothing a player paid for twice — the
+   * fuel item was already consumed either way — whereas throwing here would fail the chunk load and
+   * take the rest of the chunk's block entities with it.
+   *
+   * @param remainingTicks the saved remaining burn time
+   * @param fuelTier the saved tier of the fuel alight
+   * @return the burn state, or a cold chamber if the save was inconsistent
+   */
+  private static BurnState readBurn(int remainingTicks, int fuelTier) {
+    try {
+      return new BurnState(remainingTicks, fuelTier);
+    } catch (IllegalArgumentException inconsistent) {
+      Alchemizer.LOGGER.warn(
+          "Pressure chamber burn state was inconsistent ({} ticks at tier {});"
+              + " putting the fire out",
+          remainingTicks,
+          fuelTier,
+          inconsistent);
+      return BurnState.cold();
+    }
+  }
+
+  /**
+   * Rebuilds a brew from a save, or leaves the chamber idle when the save does not describe one.
+   *
+   * <p>A brew is restored exactly as written — same length, same progress — rather than re-derived
+   * from the machine as it now stands, because the run was priced at the start. An implausible
+   * record is dropped and logged rather than rebuilt: a bad save must cost the offending brew, not
+   * the chunk load. A null potion id is rejected on its own because a partial decode can produce
+   * one, and the finish path would not survive it.
+   *
+   * @param input the save data being read
+   */
+  private void restoreBrew(ValueInput input) {
+    SavedBrew saved;
+    try {
+      saved = input.read(KEY_BREW, SavedBrew.CODEC).orElse(null);
+    } catch (RuntimeException malformed) {
+      Alchemizer.LOGGER.warn(
+          "Pressure chamber at {} had an unreadable saved brew; starting idle",
+          worldPosition,
+          malformed);
+      return;
+    }
+    if (saved == null) {
+      return;
+    }
+    if (saved.potionId() == null
+        || saved.totalTicks() <= 0
+        || saved.elapsedTicks() < 0
+        || saved.elapsedTicks() > saved.totalTicks()
+        || saved.batch() < 1
+        || saved.batch() > 64
+        || saved.tier() < 1) {
+      Alchemizer.LOGGER.warn(
+          "Pressure chamber at {} dropped an implausible saved brew"
+              + " (potion {}, tier {}, batch {}, {} of {} ticks)",
+          worldPosition,
+          saved.potionId(),
+          saved.tier(),
+          saved.batch(),
+          saved.elapsedTicks(),
+          saved.totalTicks());
+      return;
+    }
+    planned = new PlannedBrew(saved.potionId(), saved.tier(), saved.batch());
+    session = new BrewSession(saved.totalTicks(), saved.elapsedTicks());
   }
 
   // Container, for the menu. Not a capability: see the class comment.
@@ -1325,6 +1589,12 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
    */
   @Override
   public boolean canPlaceItem(int slot, ItemStack stack) {
+    if (slot == SLOT_FUEL) {
+      // Asked first because the fuel slot's index sits above the enhancer range below, which
+      // refuses everything after the bottle. A tiered item is accepted even if the fuel table
+      // would refuse to burn it: the burn time is checked at lighting, and said once there.
+      return stack.isEmpty() || FuelTags.tierOf(stack).isPresent();
+    }
     if (slot == SLOT_OUTPUT) {
       // Said out loud rather than left to the catch-all below. The catch-all happens to cover this
       // index today, but only because the output slot was appended after the reserved ones; a

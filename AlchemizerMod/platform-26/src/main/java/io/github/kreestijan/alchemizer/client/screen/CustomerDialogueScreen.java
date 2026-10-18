@@ -30,7 +30,7 @@ import net.minecraft.world.entity.player.Inventory;
  * the client says which button, and the server re-derives the customer, the shop and the player's
  * right to act there.
  *
- * <p>No {@code @OnlyIn(Dist.CLIENT)}, for the reason given in {@link IgnitionChamberScreen}.
+ * <p>No {@code @OnlyIn(Dist.CLIENT)}, for the reason given in {@link PressureChamberScreen}.
  */
 public class CustomerDialogueScreen extends Screen implements MenuAccess<CustomerDialogueMenu> {
 
