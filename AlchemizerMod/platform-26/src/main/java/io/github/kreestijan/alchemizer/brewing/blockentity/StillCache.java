@@ -71,7 +71,7 @@ final class StillCache {
           StillValidator.inspect(
               new LevelStructureView(level, origin),
               ModTags.machineBlocks(),
-              ConfigCache.current().scanRadius());
+              ConfigCache.current());
     }
     return inspection;
   }

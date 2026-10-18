@@ -4,6 +4,7 @@ import io.github.kreestijan.alchemizer.Alchemizer;
 import io.github.kreestijan.alchemizer.brewing.blockentity.AlchemicalTankBlockEntity;
 import io.github.kreestijan.alchemizer.brewing.blockentity.IgnitionChamberBlockEntity;
 import io.github.kreestijan.alchemizer.brewing.blockentity.PressureChamberBlockEntity;
+import io.github.kreestijan.alchemizer.shop.blockentity.CounterBlockEntity;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.neoforged.neoforge.registries.DeferredHolder;
@@ -55,6 +56,12 @@ public final class ModBlockEntities {
               () ->
                   new BlockEntityType<>(
                       AlchemicalTankBlockEntity::new, ModBlocks.ALCHEMICAL_TANK.get()));
+
+  public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<CounterBlockEntity>>
+      COUNTER =
+          BLOCK_ENTITIES.register(
+              "counter",
+              () -> new BlockEntityType<>(CounterBlockEntity::new, ModBlocks.COUNTER.get()));
 
   private ModBlockEntities() {}
 }

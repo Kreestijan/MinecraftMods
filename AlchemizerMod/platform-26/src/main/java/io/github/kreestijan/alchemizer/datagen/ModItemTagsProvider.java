@@ -69,9 +69,10 @@ public final class ModItemTagsProvider extends ItemTagsProvider {
 
     tag(FuelTags.tagOf(FuelTier.BLAZE_ROD)).add(Items.BLAZE_ROD);
 
-    // Tier four exists and is empty. An empty file is the honest way to say "the ladder has this
-    // rung and nothing is on it yet": the Enhanced Blaze Rod that belongs here is a later tier's
-    // fuel, and writing the tag now means adding it later is one line in one file.
-    tag(FuelTags.tagOf(FuelTier.ENHANCED_BLAZE_ROD));
+    // The ladder's top rung, and the only one this mod fills by itself: every rung below is a
+    // vanilla item the game already had a burn time for. That is why the ladder stops here rather
+    // than continuing into more of this mod's items — a rung above this one would need a fuel that
+    // exists for no other reason than to be a rung.
+    tag(FuelTags.tagOf(FuelTier.ENHANCED_BLAZE_ROD)).add(ModItems.ENHANCED_BLAZE_ROD.get());
   }
 }

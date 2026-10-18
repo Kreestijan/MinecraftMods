@@ -1,5 +1,6 @@
 package io.github.kreestijan.alchemizer.brewing.menu;
 
+import io.github.kreestijan.alchemizer.core.timing.BrewTime;
 import io.github.kreestijan.alchemizer.registry.ModMenus;
 import net.minecraft.world.Container;
 import net.minecraft.world.SimpleContainer;
@@ -37,13 +38,24 @@ public class IgnitionChamberMenu extends AbstractContainerMenu {
 
   private static final int HOTBAR_SLOT_END = HOTBAR_SLOT_START + 9;
 
-  /** Where the slot sits in the panel; the panel art draws its recess one pixel up and left. */
-  private static final int SLOT_X = 80;
+  /**
+   * Where the slot sits in the panel; the panel art draws its recess one pixel up and left.
+   *
+   * <p>Public because the screen sets the countdown down beside this slot, and "beside" is a
+   * statement about where the slot is rather than a second number that happens to land in the right
+   * place.
+   */
+  public static final int SLOT_X = 80;
 
   private static final int SLOT_Y = 20;
 
-  /** The player inventory's origin, in the same coordinates as the slot above. */
-  private static final int INVENTORY_X = 8;
+  /**
+   * The player inventory's origin, in the same coordinates as the slot above.
+   *
+   * <p>Public because the screen lines the inventory's label up with the well this puts the first
+   * slot in, which is one pixel left of it — see {@code PanelLabels#inventoryLabelX}.
+   */
+  public static final int INVENTORY_X = 8;
 
   private static final int INVENTORY_Y = 84;
 
@@ -147,8 +159,31 @@ public class IgnitionChamberMenu extends AbstractContainerMenu {
     if (total <= 0) {
       return 0.0F;
     }
-    int remaining = Math.max(0, data.get(IgnitionChamberData.BURN_REMAINING));
-    return Math.min(1.0F, remaining / (float) total);
+    return Math.min(1.0F, burnRemainingTicks() / (float) total);
+  }
+
+  /**
+   * How long the fuel alight has left, in seconds.
+   *
+   * <p>Rounded up, so that the countdown reaches zero when the fire goes out rather than up to a
+   * second before it. A readout reading nothing left while the chamber was still visibly lit would
+   * be telling the player something untrue about the machine in front of them.
+   *
+   * <p>This is the number the screen's bar is a picture of, in the unit a player counts in, and
+   * both are read from the same two data slots so the two cannot disagree.
+   *
+   * @return seconds left on the fuel burning, or zero when the chamber is cold
+   */
+  public int burnSecondsRemaining() {
+    int ticks = burnRemainingTicks();
+    return (ticks + BrewTime.TICKS_PER_SECOND - 1) / BrewTime.TICKS_PER_SECOND;
+  }
+
+  /**
+   * @return the burn left, clamped at zero, which is what both readings above are built from
+   */
+  private int burnRemainingTicks() {
+    return Math.max(0, data.get(IgnitionChamberData.BURN_REMAINING));
   }
 
   /**

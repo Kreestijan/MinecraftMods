@@ -4,9 +4,12 @@ import io.github.kreestijan.alchemizer.Alchemizer;
 import io.github.kreestijan.alchemizer.brewing.blockentity.PressureChamberBlockEntity;
 import io.github.kreestijan.alchemizer.config.ConfigCache;
 import io.github.kreestijan.alchemizer.registry.ModTags;
+import java.util.List;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.TagKey;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.event.level.BlockEvent;
 
@@ -51,6 +54,37 @@ public final class StillInvalidation {
    * method hands back a fresh copy of the array every time and this runs on every block change.
    */
   private static final Direction[] DIRECTIONS = Direction.values();
+
+  /**
+   * Every tag that makes a block a part of a still.
+   *
+   * <p>This is the gate's whole definition of "could matter", so it has to name every part the
+   * validator knows. It used to name only the three structural ones, and that was a bug with a
+   * shape worth remembering: the chamber only hears about a change within {@code scanRadius} of it,
+   * so a part placed out of reach of a chamber or a tank was never announced to the cache at all.
+   * Building a still up out of order therefore worked, and building it on afterwards did not — one
+   * condenser touching the chamber was counted, the next three in the row behind it were not, and a
+   * resonance crystal leaning against a valve was invisible.
+   *
+   * <p>The tag keys are what is tested, not the block ids inside them, so a datapack that declares
+   * another mod's block a condenser is honoured here exactly as it is by the validator. It is
+   * walked by index rather than with a for-each for the same reason {@link #DIRECTIONS} is an
+   * array: this runs on every block change in the level, and an iterator per cell is an allocation
+   * this does not need to make.
+   */
+  private static final List<TagKey<Block>> PART_TAGS =
+      List.of(
+          ModTags.IGNITION_CHAMBER,
+          ModTags.PRESSURE_CHAMBER,
+          ModTags.ALCHEMICAL_TANK,
+          ModTags.AIR_PRESSURE_VALVE,
+          ModTags.BELLOWS,
+          ModTags.FUNNEL,
+          ModTags.FLUE_STACK,
+          ModTags.RESONANCE_CRYSTAL,
+          ModTags.CONDENSER,
+          ModTags.ADVANCED_CONDENSER,
+          ModTags.ALCHEMICAL_TUBING);
 
   private StillInvalidation() {}
 
@@ -98,14 +132,22 @@ public final class StillInvalidation {
     return false;
   }
 
+  /**
+   * @param level the level the cell is in
+   * @param pos the cell to ask about
+   * @return whether this cell is any part of a still
+   */
   private static boolean isMachinePart(ServerLevel level, BlockPos pos) {
     if (!level.isLoaded(pos)) {
       return false;
     }
     BlockState state = level.getBlockState(pos);
-    return state.is(ModTags.IGNITION_CHAMBER)
-        || state.is(ModTags.PRESSURE_CHAMBER)
-        || state.is(ModTags.ALCHEMICAL_TANK);
+    for (int i = 0; i < PART_TAGS.size(); i++) {
+      if (state.is(PART_TAGS.get(i))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

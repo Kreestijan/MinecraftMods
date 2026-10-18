@@ -7,6 +7,7 @@ import java.util.concurrent.CompletableFuture;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.data.PackOutput;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.world.level.block.Blocks;
 import net.neoforged.neoforge.common.data.BlockTagsProvider;
 
 /**
@@ -39,7 +40,18 @@ public final class ModBlockTagsProvider extends BlockTagsProvider {
     tag(BlockTags.MINEABLE_WITH_PICKAXE)
         .add(ModBlocks.IGNITION_CHAMBER.get())
         .add(ModBlocks.PRESSURE_CHAMBER.get())
-        .add(ModBlocks.ALCHEMICAL_TANK.get());
+        .add(ModBlocks.ALCHEMICAL_TANK.get())
+        .add(ModBlocks.AIR_PRESSURE_VALVE.get())
+        .add(ModBlocks.BELLOWS.get())
+        .add(ModBlocks.FUNNEL.get())
+        .add(ModBlocks.FLUE_STACK.get())
+        .add(ModBlocks.RESONANCE_CRYSTAL.get())
+        .add(ModBlocks.CONDENSER.get())
+        .add(ModBlocks.ADVANCED_CONDENSER.get())
+        .add(ModBlocks.ALCHEMICAL_TUBING.get());
+
+    // The Counter is a wooden box, so it is an axe job rather than a pickaxe one.
+    tag(BlockTags.MINEABLE_WITH_AXE).add(ModBlocks.COUNTER.get());
 
     // One tag per still part. These are the machine's definition: the validator looks up which
     // block ids are in each tag and never asks what a block is called. Each tag holds exactly one
@@ -52,5 +64,18 @@ public final class ModBlockTagsProvider extends BlockTagsProvider {
     tag(ModTags.IGNITION_CHAMBER).add(ModBlocks.IGNITION_CHAMBER.get());
     tag(ModTags.PRESSURE_CHAMBER).add(ModBlocks.PRESSURE_CHAMBER.get());
     tag(ModTags.ALCHEMICAL_TANK).add(ModBlocks.ALCHEMICAL_TANK.get());
+    tag(ModTags.AIR_PRESSURE_VALVE).add(ModBlocks.AIR_PRESSURE_VALVE.get());
+    tag(ModTags.BELLOWS).add(ModBlocks.BELLOWS.get());
+    tag(ModTags.FUNNEL).add(ModBlocks.FUNNEL.get());
+    tag(ModTags.FLUE_STACK).add(ModBlocks.FLUE_STACK.get());
+    tag(ModTags.RESONANCE_CRYSTAL).add(ModBlocks.RESONANCE_CRYSTAL.get());
+    tag(ModTags.CONDENSER).add(ModBlocks.CONDENSER.get());
+    tag(ModTags.ADVANCED_CONDENSER).add(ModBlocks.ADVANCED_CONDENSER.get());
+    tag(ModTags.ALCHEMICAL_TUBING).add(ModBlocks.ALCHEMICAL_TUBING.get());
+
+    // The ground a customer prefers to walk on. Vanilla's dirt path is the whole of it today, and
+    // the mod ships no path block of its own: the point of the tag is that a shopkeeper lays down
+    // whatever their world already has, and a datapack or another mod may add to it.
+    tag(ModTags.SHOP_PATH_PREFERRED).add(Blocks.DIRT_PATH);
   }
 }

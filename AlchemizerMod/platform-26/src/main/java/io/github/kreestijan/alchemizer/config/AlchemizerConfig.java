@@ -35,6 +35,7 @@ public final class AlchemizerConfig {
   private static final ModConfigSpec.IntValue TANK_CAPACITY_MB;
   private static final ModConfigSpec.IntValue DOSE_MB;
   private static final ModConfigSpec.IntValue SCAN_RADIUS;
+  private static final ModConfigSpec.IntValue MAX_TUBING_LENGTH;
   private static final ModConfigSpec.IntValue MIN_BREW_TICKS;
   private static final ModConfigSpec.DoubleValue BELLOWS_FACTOR;
   private static final ModConfigSpec.ConfigValue<List<? extends Integer>> HOURGLASS_BASE_SECONDS;
@@ -43,6 +44,18 @@ public final class AlchemizerConfig {
   private static final ModConfigSpec.DoubleValue POTENCY_STEP;
   private static final ModConfigSpec.IntValue DURATION_BASELINE_TICKS;
   private static final ModConfigSpec.DoubleValue DURATION_EXPONENT;
+
+  private static final ModConfigSpec.IntValue CUSTOMERS_PER_SHOP;
+  private static final ModConfigSpec.IntValue CUSTOMER_ARRIVAL_TICKS;
+  private static final ModConfigSpec.IntValue CUSTOMER_GRACE_TICKS;
+  private static final ModConfigSpec.IntValue SHOP_FIELD_RADIUS;
+  private static final ModConfigSpec.IntValue SHOP_FIELD_Y_BELOW;
+  private static final ModConfigSpec.IntValue SHOP_FIELD_Y_ABOVE;
+  private static final ModConfigSpec.IntValue PATH_WEAR_THRESHOLD;
+  private static final ModConfigSpec.BooleanValue PATH_WEAR_ENABLED;
+  private static final ModConfigSpec.IntValue PREFERRED_PATH_COST;
+  private static final ModConfigSpec.IntValue PLAIN_PATH_COST;
+  private static final ModConfigSpec.IntValue CLIMB_SURCHARGE;
 
   static {
     ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -113,6 +126,18 @@ public final class AlchemizerConfig {
                 TuningDefaults.SCAN_RADIUS,
                 TuningDefaults.SCAN_RADIUS_MIN,
                 TuningDefaults.SCAN_RADIUS_MAX);
+    MAX_TUBING_LENGTH =
+        builder
+            .comment(
+                "How long a run of alchemical tubing may be, counted in tubing blocks.",
+                "A tank or condenser further than this from the pressure chamber stops counting,",
+                "and a machine whose only tank is that far away says so rather than reporting no",
+                "tank at all. Zero refuses tubing outright, so every tank has to touch the chamber.")
+            .defineInRange(
+                "maxTubingLength",
+                TuningDefaults.MAX_TUBING_LENGTH,
+                TuningDefaults.MAX_TUBING_LENGTH_MIN,
+                TuningDefaults.MAX_TUBING_LENGTH_MAX);
     MIN_BREW_TICKS =
         builder
             .comment(
@@ -193,6 +218,144 @@ public final class AlchemizerConfig {
                 TuningDefaults.DURATION_EXPONENT_MAX);
     builder.pop();
 
+    builder.push("shop");
+    CUSTOMERS_PER_SHOP =
+        builder
+            .comment(
+                "How many customers one shop may have waiting at once.",
+                "This is both the shop's cap and the length of its queue: the line is drawn from",
+                "the shop's own walkable ground, so a shop with less room for a queue may hold",
+                "fewer than this however high it is set. Between one and sixteen.")
+            .defineInRange(
+                "customersPerShop",
+                TuningDefaults.CUSTOMERS_PER_SHOP,
+                TuningDefaults.CUSTOMERS_PER_SHOP_MIN,
+                TuningDefaults.CUSTOMERS_PER_SHOP_MAX);
+    CUSTOMER_ARRIVAL_TICKS =
+        builder
+            .comment(
+                "How long a shop waits between one customer and the next, in ticks.",
+                "Twenty ticks is one second, and the default of two hundred is ten. Each shop",
+                "keeps its own clock, so this is the interval per shop and not for the world.",
+                "Read when a Counter starts ticking: changing it affects Counters loaded after",
+                "the change, not the ones already in a loaded chunk.")
+            .defineInRange(
+                "customerArrivalTicks",
+                TuningDefaults.CUSTOMER_ARRIVAL_TICKS,
+                TuningDefaults.CUSTOMER_ARRIVAL_TICKS_MIN,
+                TuningDefaults.CUSTOMER_ARRIVAL_TICKS_MAX);
+    CUSTOMER_GRACE_TICKS =
+        builder
+            .comment(
+                "How long a customer with no usable route waits before leaving, in ticks.",
+                "A route goes missing while the shop's navigation field is being rebuilt, which",
+                "takes a few ticks, so this has to outlast that; it is also how long a customer",
+                "stranded by a broken Counter stands about. Zero leaves at once, and the default",
+                "of two hundred is ten seconds.")
+            .defineInRange(
+                "customerGraceTicks",
+                TuningDefaults.CUSTOMER_GRACE_TICKS,
+                TuningDefaults.CUSTOMER_GRACE_TICKS_MIN,
+                TuningDefaults.CUSTOMER_GRACE_TICKS_MAX);
+    SHOP_FIELD_RADIUS =
+        builder
+            .comment(
+                "How far a shop's navigation field reaches horizontally from the Counter, in",
+                "blocks. Every customer walks on this field, and a shop whose ground is outside",
+                "it has no route and no customers. Raising it costs field build time and memory",
+                "with the square of the radius, and it is also how far a block change is looked",
+                "for from a Counter. Between one and sixty-four.")
+            .defineInRange(
+                "shopFieldRadius",
+                TuningDefaults.SHOP_FIELD_RADIUS,
+                TuningDefaults.SHOP_FIELD_RADIUS_MIN,
+                TuningDefaults.SHOP_FIELD_RADIUS_MAX);
+    SHOP_FIELD_Y_BELOW =
+        builder
+            .comment(
+                "How far below the Counter that field may reach, in blocks.",
+                "Separate from the reach upwards because a route down a mineshaft is not the",
+                "same kind of thing as a route up a hill. Zero keeps the field level.",
+                "Read together with the radius: the box the field covers has to stay inside the",
+                "size the field builder allows, so a very large radius and a very tall reach",
+                "cannot both be set at their maximum.")
+            .defineInRange(
+                "shopFieldYBelow",
+                TuningDefaults.SHOP_FIELD_Y_BELOW,
+                TuningDefaults.SHOP_FIELD_VERTICAL_MIN,
+                TuningDefaults.SHOP_FIELD_VERTICAL_MAX);
+    SHOP_FIELD_Y_ABOVE =
+        builder
+            .comment(
+                "How far above the Counter that field may reach, in blocks.",
+                "Zero keeps the field level, and the same limit on the box's total size applies")
+            .defineInRange(
+                "shopFieldYAbove",
+                TuningDefaults.SHOP_FIELD_Y_ABOVE,
+                TuningDefaults.SHOP_FIELD_VERTICAL_MIN,
+                TuningDefaults.SHOP_FIELD_VERTICAL_MAX);
+    PATH_WEAR_THRESHOLD =
+        builder
+            .comment(
+                "How many times customers walk over one cell before its ground becomes a path.",
+                "Counted per cell and per shop, in memory only: a Counter that unloads or is",
+                "broken forgets every pass. Twenty is a shop that has been busy for a while.",
+                "Lowering it makes paths appear after a handful of customers, and one pass of one",
+                "customer is the floor.")
+            .defineInRange(
+                "pathWearThreshold",
+                TuningDefaults.PATH_WEAR_THRESHOLD,
+                TuningDefaults.PATH_WEAR_THRESHOLD_MIN,
+                TuningDefaults.PATH_WEAR_THRESHOLD_MAX);
+    PATH_WEAR_ENABLED =
+        builder
+            .comment(
+                "Whether walking wears the ground into a path at all.",
+                "With this off no ground is ever converted and no passes are counted, so turning",
+                "it back on starts every shop's paths from nothing rather than from a tally",
+                "collected while it was off.")
+            .define("pathWearEnabled", TuningDefaults.PATH_WEAR_ENABLED);
+    PREFERRED_PATH_COST =
+        builder
+            .comment(
+                "What a step onto a preferred path block costs the navigation field.",
+                "Preferred blocks are the ones in the alchemizer:shop_path_preferred block tag.",
+                "What matters is the ratio to the cost of ordinary ground below: at one to three,",
+                "a detour along a path of up to three times the straight-line distance is still",
+                "the cheaper way round. At least one, because a zero-cost step is one the field",
+                "refuses.")
+            .defineInRange(
+                "preferredPathCost",
+                TuningDefaults.PREFERRED_PATH_COST,
+                TuningDefaults.PREFERRED_PATH_COST_MIN,
+                TuningDefaults.PREFERRED_PATH_COST_MAX);
+    PLAIN_PATH_COST =
+        builder
+            .comment(
+                "What a step onto ordinary ground costs the navigation field.",
+                "Every walkable cell has to have a price, and this is what nothing special about",
+                "it is worth. It should be at least the preferred path cost above, or the",
+                "preference the design asks for becomes a penalty. At least one, because a",
+                "zero-cost step is one the field refuses.")
+            .defineInRange(
+                "plainPathCost",
+                TuningDefaults.PLAIN_PATH_COST,
+                TuningDefaults.PLAIN_PATH_COST_MIN,
+                TuningDefaults.PLAIN_PATH_COST_MAX);
+    CLIMB_SURCHARGE =
+        builder
+            .comment(
+                "What a step that changes height costs on top of the ground it lands on.",
+                "Without it a staircase and a hillside are the same distance and customers",
+                "zig-zag up a cliff face. Deliberately small: climbing one block is still worth",
+                "taking to get round a wall twice as long. Zero makes a climb free.")
+            .defineInRange(
+                "climbSurcharge",
+                TuningDefaults.CLIMB_SURCHARGE,
+                TuningDefaults.CLIMB_SURCHARGE_MIN,
+                TuningDefaults.CLIMB_SURCHARGE_MAX);
+    builder.pop();
+
     SPEC = builder.build();
   }
 
@@ -216,6 +379,7 @@ public final class AlchemizerConfig {
         TANK_CAPACITY_MB.getAsInt(),
         DOSE_MB.getAsInt(),
         SCAN_RADIUS.getAsInt(),
+        MAX_TUBING_LENGTH.getAsInt(),
         hourglass.stream().map(Integer::intValue).toList(),
         BELLOWS_FACTOR.getAsDouble(),
         MIN_BREW_TICKS.getAsInt(),
@@ -224,6 +388,17 @@ public final class AlchemizerConfig {
             POTENCY_STEP.getAsDouble(),
             DURATION_BASELINE_TICKS.getAsInt(),
             DURATION_EXPONENT.getAsDouble()),
-        DEBUG_LOGGING.getAsBoolean());
+        DEBUG_LOGGING.getAsBoolean(),
+        CUSTOMERS_PER_SHOP.getAsInt(),
+        CUSTOMER_ARRIVAL_TICKS.getAsInt(),
+        CUSTOMER_GRACE_TICKS.getAsInt(),
+        SHOP_FIELD_RADIUS.getAsInt(),
+        SHOP_FIELD_Y_BELOW.getAsInt(),
+        SHOP_FIELD_Y_ABOVE.getAsInt(),
+        PATH_WEAR_THRESHOLD.getAsInt(),
+        PATH_WEAR_ENABLED.getAsBoolean(),
+        PREFERRED_PATH_COST.getAsInt(),
+        PLAIN_PATH_COST.getAsInt(),
+        CLIMB_SURCHARGE.getAsInt());
   }
 }

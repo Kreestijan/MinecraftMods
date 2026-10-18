@@ -36,7 +36,21 @@ public final class ModCreativeTabs {
                         output.accept(ModItems.IGNITION_CHAMBER.get());
                         output.accept(ModItems.PRESSURE_CHAMBER.get());
                         output.accept(ModItems.ALCHEMICAL_TANK.get());
+                        // The storefront, after the machines it is stocked from.
+                        output.accept(ModItems.COUNTER.get());
+                        // The still parts, in the order a player builds them up the tiers: it is
+                        // the same order ModBlocks declares them in, and the one the ladder in
+                        // PartCounts asks for them in.
+                        output.accept(ModItems.AIR_PRESSURE_VALVE.get());
+                        output.accept(ModItems.BELLOWS.get());
+                        output.accept(ModItems.FUNNEL.get());
+                        output.accept(ModItems.FLUE_STACK.get());
+                        output.accept(ModItems.RESONANCE_CRYSTAL.get());
+                        output.accept(ModItems.CONDENSER.get());
+                        output.accept(ModItems.ADVANCED_CONDENSER.get());
+                        output.accept(ModItems.ALCHEMICAL_TUBING.get());
                         output.accept(ModItems.ALCHEMICAL_COAL.get());
+                        output.accept(ModItems.ENHANCED_BLAZE_ROD.get());
                         output.accept(ModItems.MURKY_MESS.get());
                       })
                   .build());

@@ -157,4 +157,25 @@ class TankMathTest {
     assertEquals(BatchCost.single(), BatchCost.of(0));
     assertEquals(BatchCost.single(), BatchCost.of(-2));
   }
+
+  @Test
+  void aBatchAtAConfiguredDoseSpendsThatDosePerPotion() {
+    BatchCost triple = BatchCost.of(3, 250);
+
+    assertEquals(3, triple.ingredients());
+    assertEquals(3, triple.bottles());
+    assertEquals(750, triple.waterMb());
+  }
+
+  @Test
+  void aBatchAtADoseOfNothingStillCostsItsIngredients() {
+    // A dose of zero is a legal setting — it makes the still free to run — and it must not turn the
+    // ingredients and the bottles off with it. The three costs are one decision, so this is the
+    // case that would go wrong if they were ever computed apart.
+    BatchCost free = BatchCost.of(4, 0);
+
+    assertEquals(4, free.ingredients());
+    assertEquals(4, free.bottles());
+    assertEquals(0, free.waterMb());
+  }
 }

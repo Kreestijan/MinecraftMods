@@ -57,8 +57,23 @@ public final class PressureChamberData implements ContainerData {
    */
   public static final int PROBLEM = 9;
 
+  /**
+   * How many potions the next brew would make, which is one unless the player has asked for more
+   * and the machine can supply it.
+   *
+   * <p>The screen needs this one and not the dial: a slot is highlighted when it holds fewer than
+   * this, and a control showing anything else would be a control lying about what it will do.
+   */
+  public static final int BATCH_MULTIPLIER = 10;
+
+  /** The largest batch the still's condensers allow, which is one when there are none. */
+  public static final int BATCH_MAXIMUM = 11;
+
+  /** One when batch brewing is switched on, zero when it is off. */
+  public static final int BATCH_ENABLED = 12;
+
   /** How many numbers this view has; also the size of the client's store. */
-  public static final int COUNT = 10;
+  public static final int COUNT = 13;
 
   private final PressureChamberBlockEntity chamber;
 
@@ -92,6 +107,9 @@ public final class PressureChamberData implements ContainerData {
               .firstProblem()
               .map(StillProblem::ordinal)
               .orElse(StillProblem.NONE_ORDINAL);
+      case BATCH_MULTIPLIER -> chamber.effectiveBatch();
+      case BATCH_MAXIMUM -> chamber.maximumBatch();
+      case BATCH_ENABLED -> chamber.batchEnabled() ? 1 : 0;
       default ->
           throw new IndexOutOfBoundsException(
               "Pressure chamber data has " + COUNT + " entries, got " + dataId);

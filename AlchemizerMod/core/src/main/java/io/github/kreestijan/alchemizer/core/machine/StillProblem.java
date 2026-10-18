@@ -59,7 +59,28 @@ public enum StillProblem {
    * <p>Not reachable for a placed block. It answers "not a still" rather than throwing, so that no
    * caller has to null-check a level before asking a question.
    */
-  NOT_IN_A_WORLD;
+  NOT_IN_A_WORLD,
+
+  /**
+   * More than one resonance crystal touches the machine; a still uses exactly one.
+   *
+   * <p>The only one of the per-tier rules that has to be checked rather than being enforced by
+   * geometry: two funnels cannot both sit on the pressure chamber, but two crystals can both touch
+   * it from opposite sides.
+   */
+  MULTIPLE_CRYSTAL,
+
+  /**
+   * The only tanks or condensers within reach are further along a run of tubing than the config
+   * allows.
+   *
+   * <p>Reported instead of {@link #NO_TANK}, which is what this case would otherwise look like. A
+   * player who has built a run longer than the limit and is told there is no tank attached will go
+   * looking for a tank that is standing right there. A run that is too long while another tank is
+   * within reach is not this: the far one is simply not counted, the way an unattached valve is
+   * not.
+   */
+  TUBING_TOO_LONG;
 
   /**
    * The value a caller uses when there is no problem to report.

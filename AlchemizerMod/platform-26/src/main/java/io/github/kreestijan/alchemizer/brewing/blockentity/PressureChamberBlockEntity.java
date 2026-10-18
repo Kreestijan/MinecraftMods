@@ -4,6 +4,7 @@ import io.github.kreestijan.alchemizer.Alchemizer;
 import io.github.kreestijan.alchemizer.common.item.StackSignatureFactory;
 import io.github.kreestijan.alchemizer.common.potion.PotionBuilder;
 import io.github.kreestijan.alchemizer.config.ConfigCache;
+import io.github.kreestijan.alchemizer.core.batch.BatchCost;
 import io.github.kreestijan.alchemizer.core.fuel.FuelRules;
 import io.github.kreestijan.alchemizer.core.fuel.FuelTier;
 import io.github.kreestijan.alchemizer.core.machine.StillProblem;
@@ -13,8 +14,8 @@ import io.github.kreestijan.alchemizer.core.recipe.BrewRecipe;
 import io.github.kreestijan.alchemizer.core.recipe.BrewResolver;
 import io.github.kreestijan.alchemizer.core.recipe.HourglassPreset;
 import io.github.kreestijan.alchemizer.core.recipe.IngredientSignature;
+import io.github.kreestijan.alchemizer.core.recipe.SlotMatcher;
 import io.github.kreestijan.alchemizer.core.tank.TankLevel;
-import io.github.kreestijan.alchemizer.core.tank.TankMath;
 import io.github.kreestijan.alchemizer.core.timing.BrewSession;
 import io.github.kreestijan.alchemizer.core.timing.BrewTime;
 import io.github.kreestijan.alchemizer.core.tuning.Tuning;
@@ -30,8 +31,10 @@ import java.util.Set;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.Mth;
 import net.minecraft.world.Container;
 import net.minecraft.world.ContainerHelper;
+import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -115,15 +118,6 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
   /** Every slot this machine has. */
   public static final int SLOT_COUNT = SLOT_OUTPUT + 1;
 
-  /**
-   * How many potions one brew makes.
-   *
-   * <p>Batching arrives with the condenser, which is out of scope at tier 1, so this is one. It is
-   * written as a constant rather than spelled into the checks because every one of them — bottles,
-   * water, output count — is "per batch" and would have to change together.
-   */
-  private static final int BOTTLES_PER_BREW = 1;
-
   /** The saved stand-in for a brew that is going to fail. No potion id can be empty. */
   private static final String MURKY_RESULT = "";
 
@@ -154,12 +148,38 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
   private HourglassPreset selectedPreset = HourglassPreset.FIVE;
 
   /**
-   * A brew that has been committed to: what it will make and what tier of fire it needs.
+   * Whether the player has batch brewing switched on. Session state, like the hourglass.
+   *
+   * <p>Off is the default and means one potion, whatever the dial says. That is not the same as a
+   * dial reading one: a player who has chosen five and switched the batch off gets one potion and
+   * finds their dial still at five when they switch it back on, which is what a switch beside a
+   * dial is for.
+   */
+  private boolean batchEnabled;
+
+  /**
+   * The batch size the player dialled in, before the switch and the machine's ceiling are applied.
+   *
+   * <p>Kept as the player set it rather than clamped on the way in, so that a condenser taken away
+   * and put back leaves the dial where it was. What is actually brewed is {@link #effectiveBatch},
+   * which clamps on the way out — the dial may say ten on a still that can only make two, and the
+   * still will make two.
+   */
+  private int multiplier = 1;
+
+  /**
+   * A brew that has been committed to: what it will make, what tier of fire it needs, and how many
+   * of them.
+   *
+   * <p>The batch is settled here, at the start, beside the recipe and for the same reason. The
+   * machine spends for the whole run the moment it begins, so a player who turns the dial down or
+   * takes a condenser off halfway through must still be handed the potions they paid for.
    *
    * @param potionId the potion to produce, or {@link #MURKY_RESULT} for a brew that will fail
    * @param tier the tier the still and its fuel must both reach for the brew to advance
+   * @param batch how many potions this run produces, fixed when it starts
    */
-  private record PlannedBrew(String potionId, int tier) {}
+  private record PlannedBrew(String potionId, int tier, int batch) {}
 
   /**
    * What a brew started right now would be, and what it would make.
@@ -167,8 +187,8 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
    * @param definitions the definitions this answer was derived from, compared by identity so that a
    *     reload discards it without anything having to announce the reload
    * @param preset the hourglass setting it was resolved at, which decides the recipe
-   * @param planned the brew that would be committed to
-   * @param result the stack that brew would put in the output slot
+   * @param result the stack that brew would put in the output slot, already multiplied up: this is
+   *     the stack the output slot has to have room for, not one potion's worth
    */
   private record NextBrew(
       ModDefinitions.Snapshot definitions,
@@ -207,7 +227,19 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
      * <p>Appended after {@link #ALREADY_BREWING} rather than inserted, so that every ordinal the
      * client already knows about is unchanged.
      */
-    OUTPUT_FULL;
+    OUTPUT_FULL,
+    /**
+     * A filled ingredient slot holds fewer than the batch size.
+     *
+     * <p>Only reachable above one. A batch of one needs one of each ingredient, and a slot that is
+     * not empty holds at least one — so at the baseline this value is never produced, and the
+     * screen's handling of it costs nothing until a condenser is attached.
+     *
+     * <p>Appended after {@link #OUTPUT_FULL} rather than grouped with {@link #NEEDS_BOTTLES}, which
+     * is where it belongs by meaning. The ordinals are what the client is sent, so an insertion
+     * anywhere but the end would silently relabel every refusal below it.
+     */
+    NOT_ENOUGH_INGREDIENTS;
 
     /**
      * @param ordinal the ordinal as it was carried across the menu's data slots
@@ -447,11 +479,19 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
 
   /**
    * @param current the brew that has run its time
-   * @return what it produced
+   * @return what it produced, one batch of it
    */
   private ItemStack resultOf(PlannedBrew current) {
+    return onePotion(current).copyWithCount(current.batch());
+  }
+
+  /**
+   * @param current the brew that has run its time
+   * @return what one potion of it looks like
+   */
+  private ItemStack onePotion(PlannedBrew current) {
     if (current.potionId().equals(MURKY_RESULT)) {
-      return new ItemStack(ModItems.MURKY_MESS.get(), BOTTLES_PER_BREW);
+      return new ItemStack(ModItems.MURKY_MESS.get());
     }
 
     Optional<PotionDefinition> definition = ModDefinitions.current().potion(current.potionId());
@@ -462,7 +502,7 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
           "A brew at {} was making {}, which is no longer defined; it finished as murky mess",
           worldPosition,
           current.potionId());
-      return new ItemStack(ModItems.MURKY_MESS.get(), BOTTLES_PER_BREW);
+      return new ItemStack(ModItems.MURKY_MESS.get());
     }
 
     return PotionBuilder.build(Items.POTION, definition.get());
@@ -490,20 +530,22 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
     }
 
     Tuning tuning = ConfigCache.current();
-    int waterNeeded = TankMath.cost(BOTTLES_PER_BREW, tuning.doseMb());
 
     // Read before the slots are spent, because spending them is what changes the answer. Resolving
     // through the same memo the readiness check used is what guarantees the brew that starts is the
-    // one that was approved, rather than a second match that could in principle disagree.
+    // one that was approved, rather than a second match that could in principle disagree — and the
+    // batch is part of that memo's key, so the size that was priced is the size that is charged.
     PlannedBrew next = nextBrew(preset).planned();
+    BatchCost cost = BatchCost.of(next.batch(), tuning.doseMb());
 
-    spendIngredients();
-    items.get(SLOT_BOTTLE).shrink(BOTTLES_PER_BREW);
-    withdrawWater(waterNeeded);
+    spendIngredients(cost.ingredients());
+    items.get(SLOT_BOTTLE).shrink(cost.bottles());
+    withdrawWater(cost.waterMb());
     invalidateNextBrew();
 
     this.planned = next;
-    session = BrewSession.start(BrewTime.ticks(preset, formed.tier().pressureSources(), tuning));
+    session =
+        BrewSession.start(BrewTime.ticks(preset, formed.tier().counts().bellowsValves(), tuning));
     setChanged();
     return StartResult.STARTED;
   }
@@ -555,22 +597,33 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
       return StartResult.NOTHING_TO_BREW;
     }
 
+    // Every filled well has to hold a whole batch. Asked of the slots as they are rather than of
+    // the recipe, because what a batch consumes is one of each ingredient the player supplied and
+    // not one of each ingredient the recipe names: a layout no recipe matches still brews, and it
+    // still brews a whole batch of Murky Mess.
+    int batch = effectiveBatch();
+    if (ingredientStacks().stream()
+        .anyMatch(stack -> !stack.isEmpty() && stack.getCount() < batch)) {
+      return StartResult.NOT_ENOUGH_INGREDIENTS;
+    }
+
     ItemStack bottles = items.get(SLOT_BOTTLE);
     // At least enough, not exactly enough: the slot holds a stack and a brew takes its share.
-    if (bottles.getItem() != Items.GLASS_BOTTLE || bottles.getCount() < BOTTLES_PER_BREW) {
+    if (bottles.getItem() != Items.GLASS_BOTTLE || bottles.getCount() < batch) {
       return StartResult.NEEDS_BOTTLES;
     }
 
     // Asked before the water so that every refusal the screen draws as a highlighted slot comes
     // before the one it draws on the gauge. Asked at the preset the caller named rather than at the
     // remembered one, so that a start cannot be approved against one recipe and committed to
-    // another.
+    // another. The stack this compares against is the whole batch, because that is what the machine
+    // will try to put down at the end.
     if (!items.get(SLOT_OUTPUT).isEmpty() && !canAccept(SLOT_OUTPUT, nextBrew(preset).result())) {
       return StartResult.OUTPUT_FULL;
     }
 
     Tuning tuning = ConfigCache.current();
-    if (!clusterLevel(tuning).canWithdraw(TankMath.cost(BOTTLES_PER_BREW, tuning.doseMb()))) {
+    if (!clusterLevel(tuning).canWithdraw(BatchCost.of(batch, tuning.doseMb()).waterMb())) {
       return StartResult.NEEDS_WATER;
     }
     return StartResult.STARTED;
@@ -585,6 +638,11 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
    * announce the reload, and on the preset, because the preset picks the recipe. Cleared by {@link
    * #invalidateNextBrew} from every write that could change the answer.
    *
+   * <p>The batch is part of the key as well, because it decides the count of the result stack and
+   * that count is what the output slot is measured against. A dial turned while the screen is open
+   * therefore re-resolves once, rather than leaving the machine holding a five-potion answer to a
+   * ten-potion question.
+   *
    * <p>This resolves a recipe but never refuses one: a layout nothing matches is still a brew, and
    * its result is the Murky Mess {@link #resultOf} would hand over.
    *
@@ -593,8 +651,12 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
    */
   private NextBrew nextBrew(HourglassPreset preset) {
     ModDefinitions.Snapshot definitions = ModDefinitions.current();
+    int batch = effectiveBatch();
     NextBrew cached = nextBrew;
-    if (cached != null && cached.definitions() == definitions && cached.preset() == preset) {
+    if (cached != null
+        && cached.definitions() == definitions
+        && cached.preset() == preset
+        && cached.planned().batch() == batch) {
       return cached;
     }
 
@@ -603,8 +665,8 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
         BrewResolver.resolveRecipe(signatures, preset, definitions.recipes());
     PlannedBrew plannedBrew =
         recipe
-            .map(matched -> new PlannedBrew(matched.potion().potionId(), matched.tier()))
-            .orElseGet(() -> new PlannedBrew(MURKY_RESULT, MURKY_TIER));
+            .map(matched -> new PlannedBrew(matched.potion().potionId(), matched.tier(), batch))
+            .orElseGet(() -> new PlannedBrew(MURKY_RESULT, MURKY_TIER, batch));
     NextBrew resolved = new NextBrew(definitions, preset, plannedBrew, resultOf(plannedBrew));
     nextBrew = resolved;
     return resolved;
@@ -712,6 +774,324 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
   }
 
   /**
+   * Fills the machine from a player's inventory for a recipe they picked out of the book.
+   *
+   * <p>This is a convenience and never a decision. It moves items and sets the hourglass; it does
+   * not start the brew, and nothing it places is spent until the player presses start. A player who
+   * loads a recipe and then thinks better of it has lost nothing but the walk.
+   *
+   * <p><b>What the machine was holding comes back first.</b> The wells and the output slot are
+   * emptied into the player's inventory before a single new item is drawn. Loading is how a player
+   * asks for this recipe instead of that one, and a load that only added would make the second
+   * request mean "this recipe as well": whatever the first load had put in the wells would sit
+   * there failing the new recipe's matchers, and the output of a brew already finished would keep
+   * the wells' contents from being spent on the next one. Returning first is what makes a second
+   * load mean what the player meant by it, and it costs nothing — the items never left their
+   * inventory for longer than the click, because a loaded recipe is not charged for until start.
+   * The bottle and the enhancer slots are not returned: a recipe does not dictate either, so a load
+   * has no business touching them.
+   *
+   * <p><b>Nothing is lost to a full inventory.</b> If the held items will not all fit, the whole
+   * load is refused and both sides are put back exactly as they were found, rather than emptying
+   * the wells into a space too small for them. A player with a full inventory who clicked a recipe
+   * has learned nothing and lost nothing, which is the only acceptable outcome of a convenience.
+   *
+   * <p>That holds in survival, which is where the loss would matter. In creative it does not, and
+   * the reason is vanilla's rather than this class's: {@code Inventory.add} sets aside whatever it
+   * could not place when the player has infinite materials instead of reporting it, so a creative
+   * player whose inventory cannot take a well in full would have that well's remainder discarded.
+   * Catching it would mean filling the inventory by hand rather than through {@code add}, which is
+   * a second copy of a vanilla rule to keep in step for the sake of an item its owner can re-obtain
+   * with one keypress.
+   *
+   * <p><b>What the inventory cannot supply is left empty.</b> Once the wells have been returned,
+   * the refill is partial rather than refused, which is what lets the screen draw the stack a well
+   * is still missing and the player go and fetch it. An absent ingredient costs nothing, because
+   * nothing is spent until the start.
+   *
+   * <p>The amount stocked is the batch the machine would actually brew at, not one. Loading a
+   * single ingredient into a still set to brew three would leave it refusing the very start the
+   * load was asked for, and telling a player to do by hand what the machine had just declined to
+   * do.
+   *
+   * @param recipe the recipe to load, which the caller has already checked against this still
+   * @param player the player whose inventory is drawn on
+   * @return whether the load happened; false when a brew is already running, or when what the
+   *     machine held would not fit back into the player's inventory
+   */
+  public boolean loadRecipe(BrewRecipe recipe, Player player) {
+    Objects.requireNonNull(recipe, "recipe");
+    Objects.requireNonNull(player, "player");
+    if (planned != null) {
+      // A brew under way has already been charged for what is in the wells. Nothing may be added to
+      // a machine mid-brew, which is the same rule the batch control obeys.
+      return false;
+    }
+
+    Inventory inventory = player.getInventory();
+
+    // Both sides are copied before anything moves, because the return below can fail halfway: an
+    // inventory with room for three of four stacks takes the three and leaves the fourth in a well
+    // that by then reads empty. Putting the copies back is what makes the refusal whole, and it is
+    // six slot copies and thirty-six against a click, not a tick.
+    List<ItemStack> wellsBefore = copySlots(0, SLOT_COUNT);
+    List<ItemStack> inventoryBefore = copyInventory(inventory);
+
+    if (!returnHeldTo(inventory)) {
+      replaceSlots(0, wellsBefore);
+      replaceInventory(inventory, inventoryBefore);
+      return false;
+    }
+
+    int batch = effectiveBatch();
+    List<SlotMatcher> slots = recipe.slots();
+    for (int i = 0; i < slots.size(); i++) {
+      // The well is empty by now whatever it held before, so the draw is from scratch and there is
+      // no topping up to do.
+      ItemStack drawn =
+          drawInto(inventory, slots.get(i), items.get(SLOT_INGREDIENT_FIRST + i), batch);
+      if (!drawn.isEmpty()) {
+        items.set(SLOT_INGREDIENT_FIRST + i, drawn);
+      }
+    }
+
+    selectPreset(recipe.time());
+    invalidateNextBrew();
+    setChanged();
+    return true;
+  }
+
+  /**
+   * Empties what the machine is holding back into a player's inventory.
+   *
+   * <p>Every slot is attempted even once one of them has failed, because the caller undoes the
+   * whole thing either way and an early exit would only make what it has to undo smaller at the
+   * cost of making this method's answer depend on the order its slots are visited in.
+   *
+   * @param inventory the inventory to return to, which is left partly filled on a false
+   * @return whether every stack fitted
+   */
+  private boolean returnHeldTo(Inventory inventory) {
+    boolean allFitted = true;
+    for (int slot = SLOT_INGREDIENT_FIRST; slot < SLOT_BOTTLE; slot++) {
+      if (!returnSlotTo(slot, inventory)) {
+        allFitted = false;
+      }
+    }
+    if (!returnSlotTo(SLOT_OUTPUT, inventory)) {
+      allFitted = false;
+    }
+    return allFitted;
+  }
+
+  /**
+   * Empties one slot into a player's inventory.
+   *
+   * <p>The slot is cleared before the move rather than after it, so that a stack the inventory will
+   * only take part of exists in exactly one place: what did not fit is the caller's to put back,
+   * and it cannot be put back twice.
+   *
+   * @param slot the machine slot to empty
+   * @param inventory the inventory to return to
+   * @return whether the whole stack fitted
+   */
+  private boolean returnSlotTo(int slot, Inventory inventory) {
+    ItemStack held = items.get(slot);
+    if (held.isEmpty()) {
+      return true;
+    }
+
+    ItemStack moving = held.copy();
+    items.set(slot, ItemStack.EMPTY);
+    // The remainder stays in `moving`; there is deliberately no drop on the ground for it. A
+    // convenience that scattered a player's items around the machine would be worse than one that
+    // politely refused.
+    inventory.add(moving);
+    return moving.isEmpty();
+  }
+
+  /**
+   * @param from the first slot to copy
+   * @param to the slot after the last one
+   * @return copies of the machine's slots in that range, safe against anything that moves
+   *     afterwards
+   */
+  private List<ItemStack> copySlots(int from, int to) {
+    List<ItemStack> copies = new ArrayList<>(to - from);
+    for (int slot = from; slot < to; slot++) {
+      copies.add(items.get(slot).copy());
+    }
+    return copies;
+  }
+
+  /**
+   * @param from the first slot to write
+   * @param copies the slots to write, in order
+   */
+  private void replaceSlots(int from, List<ItemStack> copies) {
+    for (int i = 0; i < copies.size(); i++) {
+      items.set(from + i, copies.get(i));
+    }
+  }
+
+  /**
+   * @param inventory the inventory to copy
+   * @return copies of everything the inventory may add to or remove from, which is its main slots
+   */
+  private static List<ItemStack> copyInventory(Inventory inventory) {
+    // The main slots only, because those are the only ones Inventory's own add and removeItem
+    // reach.
+    List<ItemStack> copies = new ArrayList<>(Inventory.INVENTORY_SIZE);
+    for (int slot = 0; slot < Inventory.INVENTORY_SIZE; slot++) {
+      copies.add(inventory.getItem(slot).copy());
+    }
+    return copies;
+  }
+
+  /**
+   * @param inventory the inventory to write
+   * @param copies the slots to write, in order
+   */
+  private static void replaceInventory(Inventory inventory, List<ItemStack> copies) {
+    for (int slot = 0; slot < copies.size(); slot++) {
+      inventory.setItem(slot, copies.get(slot));
+    }
+  }
+
+  /**
+   * Takes what a well still needs out of a player's inventory.
+   *
+   * <p><b>One item type, not one of each.</b> A well naming a tag is satisfied by any of several
+   * items, and an inventory holding four kinds of plank would otherwise contribute one plank of
+   * each — which is a thing no player asked for and would have to undo. Only the first matching
+   * stack the inventory offers is drawn on, and later stacks are used only if they are that same
+   * item.
+   *
+   * <p><b>The well is capped at what the ingredient stacks to.</b> A batch larger than that is one
+   * the machine could never start — {@link #readiness} asks every filled well for a whole batch —
+   * so the cap never refuses a load that would have worked, and it keeps a well inside the stack
+   * sizes the game and the slot can actually hold.
+   *
+   * @param inventory the player's inventory, which is drawn down as the loop runs
+   * @param matcher what the recipe wants in the well
+   * @param well what the well holds already, which may be empty
+   * @param batch how many of the ingredient the well should end up holding
+   * @return the drawn items, or an empty stack when the inventory had none to give
+   */
+  private static ItemStack drawInto(
+      Inventory inventory, SlotMatcher matcher, ItemStack well, int batch) {
+    int have = well.getCount();
+    int wanted = batch - have;
+    if (wanted <= 0) {
+      return ItemStack.EMPTY;
+    }
+
+    ItemStack first = ItemStack.EMPTY;
+    int taken = 0;
+    for (int slot = 0; slot < Inventory.INVENTORY_SIZE && taken < wanted; slot++) {
+      ItemStack stack = inventory.getItem(slot);
+      if (stack.isEmpty() || !matcher.accepts(StackSignatureFactory.of(stack))) {
+        continue;
+      }
+      if (first.isEmpty()) {
+        first = stack.copy();
+        wanted = Math.min(wanted, Math.max(0, first.getMaxStackSize() - have));
+      } else if (!ItemStack.isSameItemSameComponents(first, stack)) {
+        continue;
+      }
+
+      int take = Math.min(wanted - taken, stack.getCount());
+      if (take <= 0) {
+        break;
+      }
+      // Taken through the inventory rather than by writing the stack, so that the slots the player
+      // can see are the ones that change and the menu's own next broadcast tells the client about
+      // it, exactly as it would for a hopper.
+      inventory.removeItem(slot, take);
+      taken += take;
+    }
+    return taken <= 0 ? ItemStack.EMPTY : first.copyWithCount(taken);
+  }
+
+  /**
+   * @return the largest batch this still may run
+   */
+  public int maximumBatch() {
+    // Asked of the still rather than of the condensers directly, so that a machine that is not a
+    // still at all answers one and the two readings cannot disagree about whether batching is
+    // available. A still with no condensers answers one as well, which is what hides the control.
+    return still().tier().maxBatch();
+  }
+
+  /**
+   * @return how many potions the next brew would make, which is one unless the player has asked for
+   *     a batch and the machine can supply it
+   */
+  public int effectiveBatch() {
+    // Clamped on the way out rather than stored clamped, because the ceiling moves: a condenser
+    // broken off a still set to ten must not leave a ten standing. Rounded down to the ceiling
+    // rather than reset to one, so that putting the condenser back restores what was chosen.
+    return batchEnabled ? Mth.clamp(multiplier, 1, maximumBatch()) : 1;
+  }
+
+  /**
+   * @return whether the player has batch brewing switched on, which is not the same as whether the
+   *     next brew makes more than one
+   */
+  public boolean batchEnabled() {
+    return batchEnabled;
+  }
+
+  /**
+   * @return the batch size the player dialled in, before the switch and the machine's ceiling
+   */
+  public int batchMultiplier() {
+    return multiplier;
+  }
+
+  /**
+   * Switches batch brewing on or off.
+   *
+   * <p>Refused while a brew is running, and refused without an error: the moment a brew starts it
+   * has been paid for at the batch it started at, so a switch that could move underneath it would
+   * be a switch that changes nothing. The screen greys the control for the duration.
+   *
+   * @return whether the switch moved
+   */
+  public boolean toggleBatch() {
+    if (planned != null) {
+      return false;
+    }
+    batchEnabled = !batchEnabled;
+    setChanged();
+    return true;
+  }
+
+  /**
+   * Sets the batch size the player dialled in.
+   *
+   * <p>Stored as given, above the machine's ceiling if that is what was asked for; what is brewed
+   * is {@link #effectiveBatch} and what the ceiling is comes from the condensers attached right
+   * now. There is no upper bound here beyond one, because the ceiling is a property of the machine
+   * rather than a number this class is entitled to invent.
+   *
+   * @param multiplier the batch size; below one is treated as one
+   * @return whether the dial moved
+   */
+  public boolean setBatchMultiplier(int multiplier) {
+    if (planned != null) {
+      return false;
+    }
+    int wanted = Math.max(1, multiplier);
+    if (wanted == this.multiplier) {
+      return false;
+    }
+    this.multiplier = wanted;
+    setChanged();
+    return true;
+  }
+
+  /**
    * @return the brew in progress, at the point it has reached
    */
   public BrewSession brewSession() {
@@ -728,10 +1108,19 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
         : Optional.of(current.potionId());
   }
 
-  /** Takes one item from each filled ingredient slot. */
-  private void spendIngredients() {
+  /**
+   * Takes a whole batch from each filled ingredient slot.
+   *
+   * <p>The shrink is unconditional across the five wells and safe on an empty one, which is why the
+   * loop does not test first: {@link ItemStack#shrink} on an empty stack does nothing at all. This
+   * mirrors the readiness check, which also reads every well rather than only the filled ones, so
+   * the two cannot disagree about which wells a batch was priced against.
+   *
+   * @param batch how many to take from each filled slot
+   */
+  private void spendIngredients(int batch) {
     for (int slot = SLOT_INGREDIENT_FIRST; slot < SLOT_BOTTLE; slot++) {
-      items.get(slot).shrink(1);
+      items.get(slot).shrink(batch);
     }
   }
 
@@ -943,9 +1332,11 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
       return false;
     }
     if (slot >= SLOT_ENHANCER_FIRST) {
-      // Reserved for enhancers, which nothing can supply yet. Refusing here rather than hiding the
-      // slots is what makes the refusal real: a menu cannot be the only thing standing between a
-      // player and a slot index.
+      // The enhancer slots are drawn and hoverable now, and still refuse everything: nothing in
+      // this mod supplies an enhancer, so accepting a stack here would be a slot that swallowed it
+      // and did nothing. The refusal is asked for at the slot rather than enforced by hiding it,
+      // because a menu cannot be the only thing standing between a player and a slot index. When
+      // an enhancer exists this becomes the one place that says which of the two takes it.
       return false;
     }
     if (slot == SLOT_BOTTLE) {

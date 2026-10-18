@@ -30,20 +30,59 @@ import net.minecraft.resources.ResourceKey;
  * from the codecs: a field renamed in {@code PotionDef} breaks this file at compile time, where a
  * hand-written JSON would go on quietly failing to load.
  *
- * <p>The two potions are the ones the still's own tests brew, plus one that carries an effect so
- * that the effect half of the loop is exercised by something a player can make. Everything else a
- * still can brew arrives as datapack data.
+ * <p>The five potions are a starting set with a shape to it rather than a catalogue: the Test
+ * Potion, which the still's own tests brew and which carries no effect at all, and then one potion
+ * per rung of the fuel ladder, each brewed at the tier whose fire it asks for. That is what makes
+ * the gate visible — a player who brews the strength recipe and then tries the fire resistance one
+ * on the same coal is told, by the machine refusing to move, that the fire is what is short.
+ * Everything else a still can brew arrives as datapack data.
  */
 public final class ModDatapackEntries {
 
   /** The {@code minecraft:speed} effect, which the swiftness recipe's potion carries. */
   private static final String SPEED = "minecraft:speed";
 
+  /** The {@code minecraft:strength} effect, which the tier two recipe's potion carries. */
+  private static final String STRENGTH = "minecraft:strength";
+
+  /** The {@code minecraft:fire_resistance} effect, which the tier three recipe's potion carries. */
+  private static final String FIRE_RESISTANCE = "minecraft:fire_resistance";
+
+  /** The {@code minecraft:regeneration} effect, which the tier four recipe's potion carries. */
+  private static final String REGENERATION = "minecraft:regeneration";
+
   /** What speed is worth before potency and duration are applied. */
   private static final int SPEED_BASE_VALUE = 12;
 
+  /** What strength is worth. Priced above speed: it decides a fight, where speed decides a walk. */
+  private static final int STRENGTH_BASE_VALUE = 16;
+
+  /** What fire resistance is worth, which is a great deal to anyone standing in lava. */
+  private static final int FIRE_RESISTANCE_BASE_VALUE = 24;
+
+  /**
+   * What regeneration is worth, which is the most of anything here.
+   *
+   * <p>The top of the ladder is also where the pricing stops being about a number of seconds and
+   * starts being about what the effect is for; this and the duration below are the pair that says
+   * so, and they are a placeholder like every other number in this file.
+   */
+  private static final int REGENERATION_BASE_VALUE = 32;
+
   /** The effect of the swiftness potion, at the weakest potency, for three minutes. */
   private static final int SWIFTNESS_DURATION_TICKS = 3600;
+
+  /** The same three minutes for strength, at the same potency. */
+  private static final int STRENGTH_DURATION_TICKS = 3600;
+
+  /** And for fire resistance: long enough to cross the thing it is for and come back. */
+  private static final int FIRE_RESISTANCE_DURATION_TICKS = 3600;
+
+  /**
+   * Regeneration is priced the other way round — the shortest of the four, because it is worth the
+   * most. Fifteen seconds of it undoes a mistake; three minutes of it would undo a fight.
+   */
+  private static final int REGENERATION_DURATION_TICKS = 900;
 
   /**
    * The registries this mod generates, and what goes in them.
@@ -66,6 +105,10 @@ public final class ModDatapackEntries {
    */
   private static void effectValues(BootstrapContext<EffectValueDef> context) {
     context.register(effectValue("speed"), new EffectValueDef(SPEED_BASE_VALUE));
+    context.register(effectValue("strength"), new EffectValueDef(STRENGTH_BASE_VALUE));
+    context.register(
+        effectValue("fire_resistance"), new EffectValueDef(FIRE_RESISTANCE_BASE_VALUE));
+    context.register(effectValue("regeneration"), new EffectValueDef(REGENERATION_BASE_VALUE));
   }
 
   /**
@@ -79,6 +122,25 @@ public final class ModDatapackEntries {
     context.register(
         potion("swiftness"),
         new PotionDef(List.of(spec(SPEED, 0, SWIFTNESS_DURATION_TICKS)), false));
+
+    // One potion per tier above the first, so that the fuel gate is a thing a player can watch
+    // rather than a thing this code asserts. Like the machine recipes, they are placeholders: the
+    // effects are real vanilla ones and the numbers are invented.
+    //
+    // None of them is unlocked by default, which today changes nothing — discovery is not
+    // implemented, so every recipe is known. The flag is authored now because it is the one thing
+    // discovery will read, and writing it with the potion is cheaper than coming back to add it.
+    context.register(
+        potion("strength"),
+        new PotionDef(List.of(spec(STRENGTH, 0, STRENGTH_DURATION_TICKS)), false));
+
+    context.register(
+        potion("fire_resistance"),
+        new PotionDef(List.of(spec(FIRE_RESISTANCE, 0, FIRE_RESISTANCE_DURATION_TICKS)), false));
+
+    context.register(
+        potion("regeneration"),
+        new PotionDef(List.of(spec(REGENERATION, 0, REGENERATION_DURATION_TICKS)), false));
   }
 
   /**
@@ -100,6 +162,38 @@ public final class ModDatapackEntries {
             HourglassPreset.FIFTEEN,
             potionId("swiftness"),
             1));
+
+    // The tier two, three and four recipes. Each names, in its ingredients, the fuel its tier
+    // burns: redstone for Alchemical Coal, blaze powder for a blaze rod, a ghast's tear for the
+    // rung above it. That is the only place a player can read what a recipe is about to ask of the
+    // fire, and a recipe that refused to run with no way to have known would be the machine being
+    // cryptic rather than demanding.
+    //
+    // The times climb with the tiers and so do the numbers. They are placeholders in exactly the
+    // sense the machine recipes are, and the CHANGELOG says so.
+    context.register(
+        recipe("strength"),
+        new BrewRecipeDef(
+            List.of(item("minecraft:glowstone_dust"), item("minecraft:redstone")),
+            HourglassPreset.FIFTEEN,
+            potionId("strength"),
+            2));
+
+    context.register(
+        recipe("fire_resistance"),
+        new BrewRecipeDef(
+            List.of(item("minecraft:magma_cream"), item("minecraft:blaze_powder")),
+            HourglassPreset.THIRTY,
+            potionId("fire_resistance"),
+            3));
+
+    context.register(
+        recipe("regeneration"),
+        new BrewRecipeDef(
+            List.of(item("minecraft:ghast_tear"), item("minecraft:glistering_melon_slice")),
+            HourglassPreset.FORTY_FIVE,
+            potionId("regeneration"),
+            4));
   }
 
   /**

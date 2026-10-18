@@ -54,10 +54,15 @@ public class AlchemicalTankScreen extends AbstractContainerScreen<AlchemicalTank
 
   private static final int GAUGE_HEIGHT = 52;
 
-  private static final int EMPTY_COLOR = 0xFF1C1C1C;
-
-  /** The water itself. There is no "short" red here: a tank is never waiting on anything. */
-  private static final int WATER_COLOR = 0xFF2E6FD6;
+  /**
+   * The water itself, drawn full height and cut down to the level in the tank.
+   *
+   * <p>There is no "short" red beside it: a tank is never waiting on anything, so this screen has
+   * one face where the pressure chamber's gauge has two. The recess it sits in is the panel
+   * texture's own, which is why nothing is drawn above the water — see {@link
+   * PressureChamberScreen} for the same arrangement on the larger gauge.
+   */
+  private static final Identifier WATER = machine("tank_water");
 
   /**
    * @param menu the tank menu this screen is a view of
@@ -66,6 +71,14 @@ public class AlchemicalTankScreen extends AbstractContainerScreen<AlchemicalTank
    */
   public AlchemicalTankScreen(AlchemicalTankMenu menu, Inventory inventory, Component title) {
     super(menu, inventory, title);
+
+    // The panel is vanilla's standard size, so the two labels are the only geometry this screen
+    // places for itself — and where they go is PanelLabels' business rather than this screen's, so
+    // that the three brewing screens agree without each restating the same distances.
+    this.titleLabelX = PanelLabels.TITLE_X;
+    this.titleLabelY = PanelLabels.TITLE_Y;
+    this.inventoryLabelX = PanelLabels.inventoryLabelX(AlchemicalTankMenu.INVENTORY_X);
+    this.inventoryLabelY = PanelLabels.inventoryLabelY(DEFAULT_IMAGE_HEIGHT);
   }
 
   /**
@@ -135,20 +148,27 @@ public class AlchemicalTankScreen extends AbstractContainerScreen<AlchemicalTank
    * @param graphics the frame being extracted
    */
   private void drawGauge(GuiGraphicsExtractor graphics) {
-    int left = leftPos + GAUGE_X;
-    int top = topPos + GAUGE_Y;
-    int right = left + GAUGE_WIDTH;
-    int bottom = top + GAUGE_HEIGHT;
-    graphics.fill(left, top, right, bottom, EMPTY_COLOR);
-
     int capacity = menu.waterCapacityMb();
     float filled = capacity <= 0 ? 0.0F : Math.min(1.0F, menu.waterStoredMb() / (float) capacity);
     int filledHeight = Math.round(filled * GAUGE_HEIGHT);
-    if (filledHeight > 0) {
-      // Bottom-up, like the vessel itself: a gauge that drained from the top would read as a
-      // progress bar rather than as a level.
-      graphics.fill(left, bottom - filledHeight, right, bottom, WATER_COLOR);
+    if (filledHeight <= 0) {
+      return;
     }
+
+    // Bottom-up, like the vessel itself: a gauge that drained from the top would read as a progress
+    // bar rather than as a level. The source rectangle is the bottom of the sprite, one pixel to
+    // one, so the surface lands wherever the amount puts it and no row of the art is ever scaled.
+    graphics.blit(
+        RenderPipelines.GUI_TEXTURED,
+        WATER,
+        leftPos + GAUGE_X,
+        topPos + GAUGE_Y + GAUGE_HEIGHT - filledHeight,
+        0.0F,
+        (float) (GAUGE_HEIGHT - filledHeight),
+        GAUGE_WIDTH,
+        filledHeight,
+        GAUGE_WIDTH,
+        GAUGE_HEIGHT);
   }
 
   /**
@@ -164,5 +184,14 @@ public class AlchemicalTankScreen extends AbstractContainerScreen<AlchemicalTank
   private Component waterText() {
     return Component.translatable(
         "gui.alchemizer.water.mb", menu.waterStoredMb(), menu.waterCapacityMb());
+  }
+
+  /**
+   * @param name the file's name under this mod's machine-widget directory
+   * @return where that sprite lives
+   */
+  private static Identifier machine(String name) {
+    return Identifier.fromNamespaceAndPath(
+        Alchemizer.MOD_ID, "textures/gui/machine/" + name + ".png");
   }
 }

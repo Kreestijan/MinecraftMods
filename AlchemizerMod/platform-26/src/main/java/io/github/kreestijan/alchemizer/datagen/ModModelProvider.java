@@ -49,12 +49,36 @@ public final class ModModelProvider extends ModelProvider {
     // single-texture cube cannot say that.
     blockModels.createTrivialBlock(ModBlocks.ALCHEMICAL_TANK.get(), TexturedModel.CUBE_TOP_BOTTOM);
 
+    // A cube that turns with the way it faces, because the Counter has a front: its queue is drawn
+    // straight out from the face the player placed toward them, so the block needs a block state
+    // that says which way it is looking. This is vanilla's own helper for exactly that — one cube
+    // model, dispatched with the y rotation each of the four horizontal facings needs — rather than
+    // the hand-built dispatch the chamber above uses, which is the pattern for a block that has
+    // more
+    // than one model to switch between. The art is still one texture on all six faces, so the turn
+    // is not visible yet; the model is rotated first so that the drawing of the front can be.
+    blockModels.createHorizontallyRotatedBlock(ModBlocks.COUNTER.get(), TexturedModel.CUBE);
+
     // The same mapping as the tank, for the same reason: a lid, a base and a glass vessel are three
     // different pictures. Unlike the chamber it needs no second model, because it has no state to
     // switch on.
     blockModels.createTrivialBlock(ModBlocks.PRESSURE_CHAMBER.get(), TexturedModel.CUBE_TOP_BOTTOM);
 
+    // The still parts. A single texture on all six faces is honest for all of them while the art is
+    // placeholder, and it is the shape these blocks will keep: a valve, a bellows and a condenser
+    // are metal boxes with a picture on them. Tubing is here too, and will stop being a cube when
+    // someone draws the connected pipe model — see the note on the block.
+    blockModels.createTrivialBlock(ModBlocks.AIR_PRESSURE_VALVE.get(), TexturedModel.CUBE);
+    blockModels.createTrivialBlock(ModBlocks.BELLOWS.get(), TexturedModel.CUBE);
+    blockModels.createTrivialBlock(ModBlocks.FUNNEL.get(), TexturedModel.CUBE);
+    blockModels.createTrivialBlock(ModBlocks.FLUE_STACK.get(), TexturedModel.CUBE);
+    blockModels.createTrivialBlock(ModBlocks.RESONANCE_CRYSTAL.get(), TexturedModel.CUBE);
+    blockModels.createTrivialBlock(ModBlocks.CONDENSER.get(), TexturedModel.CUBE);
+    blockModels.createTrivialBlock(ModBlocks.ADVANCED_CONDENSER.get(), TexturedModel.CUBE);
+    blockModels.createTrivialBlock(ModBlocks.ALCHEMICAL_TUBING.get(), TexturedModel.CUBE);
+
     itemModels.generateFlatItem(ModItems.ALCHEMICAL_COAL.get(), ModelTemplates.FLAT_ITEM);
+    itemModels.generateFlatItem(ModItems.ENHANCED_BLAZE_ROD.get(), ModelTemplates.FLAT_ITEM);
 
     // A brew's failure output, drawn like any other item: a flask on a plain background. Listed
     // here rather than inferred because the generator only derives a model for a *block* item — a

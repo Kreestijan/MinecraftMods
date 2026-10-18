@@ -120,6 +120,24 @@ public final class BrewGameTests {
           function(
               "an_unformed_machine_names_the_fault", BrewGameTests::anUnformedMachineNamesTheFault);
 
+  private static final DeferredHolder<Consumer<GameTestHelper>, Consumer<GameTestHelper>>
+      BATCH_BREW = function("a_batch_brews_and_spends_three_at_a_time", BrewGameTests::brewsABatch);
+
+  private static final DeferredHolder<Consumer<GameTestHelper>, Consumer<GameTestHelper>>
+      BATCH_CLAMPED =
+          function(
+              "a_batch_is_clamped_by_the_condensers_present",
+              BrewGameTests::clampsTheBatchToTheCondensers);
+
+  private static final DeferredHolder<Consumer<GameTestHelper>, Consumer<GameTestHelper>>
+      FUEL_GATE =
+          function("a_tier_three_recipe_waits_for_tier_three_fire", BrewGameTests::waitsForItsFuel);
+
+  private static final DeferredHolder<Consumer<GameTestHelper>, Consumer<GameTestHelper>>
+      PART_ADDED =
+          function(
+              "a_part_added_to_a_finished_still_is_noticed", BrewGameTests::noticesAPartAddedLater);
+
   /** Every body above, so that the loop in {@link #onRegisterGameTests} cannot miss one. */
   private static final List<DeferredHolder<Consumer<GameTestHelper>, Consumer<GameTestHelper>>>
       TESTS =
@@ -136,7 +154,11 @@ public final class BrewGameTests {
               PART_REMOVED,
               SPARE_TANK_REMOVED,
               CHAMBER_SPILLS,
-              UNFORMED_SAYS_WHY);
+              UNFORMED_SAYS_WHY,
+              BATCH_BREW,
+              BATCH_CLAMPED,
+              FUEL_GATE,
+              PART_ADDED);
 
   /** Vanilla's blank template — {@code data/minecraft/structure/empty.nbt}. */
   private static final Identifier EMPTY_STRUCTURE = Identifier.withDefaultNamespace("empty");
@@ -159,6 +181,9 @@ public final class BrewGameTests {
   /** The fifteen-second hourglass, in ticks. */
   private static final int FIFTEEN_SECOND_BREW_TICKS = 300;
 
+  /** The thirty-second hourglass, in ticks, which is what the tier-three recipe asks for. */
+  private static final int THIRTY_SECOND_BREW_TICKS = 600;
+
   /** Extra ticks allowed on top of a brew's own time before its result is asserted. */
   private static final int BREW_GRACE_TICKS = 40;
 
@@ -172,6 +197,10 @@ public final class BrewGameTests {
   private static final Identifier SPEED_EFFECT = Identifier.withDefaultNamespace("speed");
 
   private static final int SWIFTNESS_DURATION_TICKS = 3600;
+
+  /** The effect the tier three recipe's potion carries, which is what proves it brewed at all. */
+  private static final Identifier FIRE_RESISTANCE_EFFECT =
+      Identifier.withDefaultNamespace("fire_resistance");
 
   /**
    * The name key {@code PotionContents.getName} builds: {@code item.minecraft.potion.effect.<id>}.
@@ -194,6 +223,66 @@ public final class BrewGameTests {
    * would be wrong.
    */
   private static final BlockPos SPARE_TANK_POS = new BlockPos(3, 1, 0);
+
+  /**
+   * Two cells that each touch the pressure chamber, which is what makes a condenser connected.
+   *
+   * <p>Neither touches the other, and that is on purpose: a condenser is an endpoint of the
+   * validator's walk and not a way through it, so a second condenser behind the first would not be
+   * counted at all. Two cells side by side on the chamber are two condensers; two in a row are one.
+   */
+  private static final BlockPos CONDENSER_WEST_POS = new BlockPos(-1, 1, 0);
+
+  private static final BlockPos CONDENSER_NORTH_POS = new BlockPos(0, 1, 1);
+
+  /**
+   * The batch the batch test brews, which is deliberately not one a condenser count can produce.
+   */
+  private static final int BATCH = 3;
+
+  /**
+   * Where a tier-three still puts the parts the tiers above one add.
+   *
+   * <p>Read off the design's own placement rules rather than invented: the valve goes on a side
+   * face of the ignition chamber, the bellows on one of the valve's four side faces, the funnel on
+   * top of the pressure chamber and the flue on the valve's top face. They are the same cells
+   * {@code StillValidatorTest.tierFour} uses, moved onto the firebox's position.
+   */
+  private static final BlockPos VALVE_POS = new BlockPos(1, 0, 0);
+
+  private static final BlockPos BELLOWS_POS = new BlockPos(1, 0, 1);
+
+  private static final BlockPos FUNNEL_POS = new BlockPos(0, 2, 0);
+
+  private static final BlockPos FLUE_POS = new BlockPos(1, 1, 0);
+
+  /**
+   * Where a tier-three still puts its tank.
+   *
+   * <p>Not {@link #TANK_POS}: the flue stack wants the top face of the valve, and that is the cell
+   * the tier-one layout gives the tank. Moving the tank one cell round the chamber is the whole of
+   * the difference between the two layouts.
+   */
+  private static final BlockPos TIER_THREE_TANK_POS = new BlockPos(0, 1, 1);
+
+  /**
+   * Where a crystal goes on the tier-three layout: against the flue stack, and against the funnel.
+   *
+   * <p>Deliberately touching neither chamber nor tank. A cell touching one of those would be
+   * announced to the chamber by the tank it stands beside, which is the case that always worked;
+   * this is the case that did not.
+   */
+  private static final BlockPos CRYSTAL_POS = new BlockPos(1, 2, 0);
+
+  /**
+   * A run of tubing off the chamber's free side face, and a condenser at the far end of it.
+   *
+   * <p>The condenser touches the tubing and nothing else, which is what §3.1 asks of it and also
+   * what makes it invisible to a chamber that only listens for the three structural blocks.
+   */
+  private static final BlockPos BATCH_TUBING_POS = new BlockPos(-1, 1, 0);
+
+  private static final BlockPos BATCH_CONDENSER_POS = new BlockPos(-2, 1, 0);
 
   private BrewGameTests() {}
 
@@ -246,6 +335,36 @@ public final class BrewGameTests {
 
     AlchemicalTankBlockEntity tankEntity =
         helper.getBlockEntity(TANK_POS, AlchemicalTankBlockEntity.class);
+    tankEntity.setStoredMb(STARTING_WATER_MB);
+
+    return new TestStill(
+        helper.getBlockEntity(CHAMBER_POS, PressureChamberBlockEntity.class),
+        helper.getBlockEntity(FIREBOX_POS, IgnitionChamberBlockEntity.class),
+        tankEntity);
+  }
+
+  /**
+   * Builds the same still with the parts up to tier three on it, and puts water in its tank.
+   *
+   * <p>Everything {@link #buildStill} does, plus the four blocks the tiers above one add. It is a
+   * second builder rather than a flag on the first because the two layouts genuinely differ — one
+   * cell of it is a tank in one and a flue stack in the other — and a parameter that moved a block
+   * around would be harder to read than the six lines it saved.
+   *
+   * @param helper the running test's handle on its own copy of the world
+   * @return the three block entities, the firebox being the one this layout builds
+   */
+  private static TestStill buildTierThreeStill(GameTestHelper helper) {
+    helper.setBlock(FIREBOX_POS, ModBlocks.IGNITION_CHAMBER.get());
+    helper.setBlock(CHAMBER_POS, ModBlocks.PRESSURE_CHAMBER.get());
+    helper.setBlock(TIER_THREE_TANK_POS, ModBlocks.ALCHEMICAL_TANK.get());
+    helper.setBlock(VALVE_POS, ModBlocks.AIR_PRESSURE_VALVE.get());
+    helper.setBlock(BELLOWS_POS, ModBlocks.BELLOWS.get());
+    helper.setBlock(FUNNEL_POS, ModBlocks.FUNNEL.get());
+    helper.setBlock(FLUE_POS, ModBlocks.FLUE_STACK.get());
+
+    AlchemicalTankBlockEntity tankEntity =
+        helper.getBlockEntity(TIER_THREE_TANK_POS, AlchemicalTankBlockEntity.class);
     tankEntity.setStoredMb(STARTING_WATER_MB);
 
     return new TestStill(
@@ -802,6 +921,275 @@ public final class BrewGameTests {
         data.get(PressureChamberData.PROBLEM) >= 0,
         Component.literal("an unformed machine should name a fault, but named none"));
     helper.succeed();
+  }
+
+  /**
+   * Brews a batch of three and checks what it spent and what came out.
+   *
+   * <p>Three is chosen because no arrangement of condensers produces it: one condenser allows two
+   * and two allow four. So a batch of three is only reachable by a dial wound below the machine's
+   * ceiling, which is the case where a clamp that rounded up, or a spend that used the ceiling
+   * rather than the dial, would show up as a wrong count.
+   *
+   * <p>Everything is asserted against the difference across the brew rather than against a total,
+   * because the tank starts with several doses in it and the point is what one run costs, not what
+   * the tank holds.
+   *
+   * @param helper the running test's handle on its own copy of the world
+   */
+  private static void brewsABatch(GameTestHelper helper) {
+    TestStill still = buildStill(helper);
+    helper.setBlock(CONDENSER_WEST_POS, ModBlocks.CONDENSER.get());
+    helper.setBlock(CONDENSER_NORTH_POS, ModBlocks.CONDENSER.get());
+
+    PressureChamberBlockEntity chamber = still.chamber();
+    helper.assertValueEqual(chamber.maximumBatch(), 4, "the ceiling two condensers allow");
+
+    // Empty wells throughout: a batch of three has to come out of the same three wells every time,
+    // and leaving the fourth and fifth stocked would hide a spend that walked the whole row.
+    loadBatch(chamber, BATCH, BATCH, Items.SPIDER_EYE, Items.DANDELION);
+    setBatch(chamber, BATCH);
+    helper.assertValueEqual(chamber.effectiveBatch(), BATCH, "the batch the dial asks for");
+    still.firebox().setItem(0, new ItemStack(Items.COAL));
+
+    int waterBefore = still.tank().level().storedMb();
+    assertStarted(helper, chamber, HourglassPreset.FIVE);
+
+    helper.runAfterDelay(
+        FIVE_SECOND_BREW_TICKS + BREW_GRACE_TICKS,
+        () -> {
+          ItemStack brewed = chamber.getItem(PressureChamberBlockEntity.SLOT_OUTPUT);
+          helper.assertTrue(
+              brewed.getItem() == Items.POTION,
+              Component.literal("a batch should brew the recipe's potion, but got " + brewed));
+          helper.assertValueEqual(brewed.getCount(), BATCH, "potions in the output slot");
+
+          for (int slot = PressureChamberBlockEntity.SLOT_INGREDIENT_FIRST;
+              slot < PressureChamberBlockEntity.SLOT_BOTTLE;
+              slot++) {
+            helper.assertTrue(
+                chamber.getItem(slot).isEmpty(),
+                Component.literal(
+                    "a batch of "
+                        + BATCH
+                        + " should empty a well holding "
+                        + BATCH
+                        + ", but slot "
+                        + slot
+                        + " holds "
+                        + chamber.getItem(slot)));
+          }
+          helper.assertTrue(
+              chamber.getItem(PressureChamberBlockEntity.SLOT_BOTTLE).isEmpty(),
+              Component.literal(
+                  "a batch of "
+                      + BATCH
+                      + " should spend all "
+                      + BATCH
+                      + " bottles, but the bottle slot holds "
+                      + chamber.getItem(PressureChamberBlockEntity.SLOT_BOTTLE)));
+
+          helper.assertValueEqual(
+              waterBefore - still.tank().level().storedMb(),
+              TankMath.cost(BATCH, ConfigCache.current().doseMb()),
+              "millibuckets spent on a batch");
+          helper.succeed();
+        });
+  }
+
+  /**
+   * Checks that the batch is whatever the condensers allow, and never what the dial says.
+   *
+   * <p>The dial is deliberately wound far past the machine in both halves. A stale setting is the
+   * failure this guards: a player who has chosen ten, then loses a condenser, must brew two and not
+   * ten — and must go back to one when the last condenser goes, without the dial having to be
+   * touched.
+   *
+   * @param helper the running test's handle on its own copy of the world
+   */
+  private static void clampsTheBatchToTheCondensers(GameTestHelper helper) {
+    TestStill still = buildStill(helper);
+    PressureChamberBlockEntity chamber = still.chamber();
+    helper.setBlock(CONDENSER_WEST_POS, ModBlocks.CONDENSER.get());
+
+    loadBatch(chamber, 2, 2, Items.SPIDER_EYE, Items.DANDELION);
+    setBatch(chamber, 10);
+
+    helper.assertValueEqual(chamber.maximumBatch(), 2, "the ceiling one condenser allows");
+    helper.assertValueEqual(chamber.effectiveBatch(), 2, "the batch one condenser allows");
+    // The dial itself is left where the player put it, which is what lets the condenser be put back
+    // without the setting being re-chosen.
+    helper.assertValueEqual(chamber.batchMultiplier(), 10, "the dial, which is not the batch");
+
+    helper.setBlock(CONDENSER_WEST_POS, Blocks.AIR);
+    helper.assertValueEqual(chamber.maximumBatch(), 1, "the ceiling with no condensers");
+    helper.assertValueEqual(chamber.effectiveBatch(), 1, "the batch with no condensers");
+
+    // Two of each in the wells and two bottles, which a machine brewing one at a time accepts and
+    // spends one of — the clamp is what makes this a start rather than a refusal either way.
+    still.firebox().setItem(0, new ItemStack(Items.COAL));
+    assertStarted(helper, chamber, HourglassPreset.FIVE);
+    helper.assertValueEqual(
+        chamber.getItem(PressureChamberBlockEntity.SLOT_OUTPUT).getCount(),
+        0,
+        "potions in the output slot while the brew is still running");
+    helper.assertValueEqual(
+        chamber.getItem(PressureChamberBlockEntity.SLOT_INGREDIENT_FIRST).getCount(),
+        1,
+        "ingredients left in the first well after a single brew was paid for");
+    helper.succeed();
+  }
+
+  /**
+   * Checks that a still built up further is told about it, rather than read off a stale scan.
+   *
+   * <p>The chamber remembers what it last found and looks again only when a block near it changes,
+   * so the question here is not "does a crystal make a tier four still" — that is a unit test in
+   * {@code core} — but "does the chamber hear about the crystal at all". It hears about a block
+   * placed against itself or a tank by the same notification that reports the change; it has to
+   * hear about one placed against a flue stack, a valve, a funnel or a condenser too, because those
+   * are parts as well. Reading the tier before each placement is what makes that the question at
+   * all: with nothing cached there is nothing to go stale.
+   *
+   * <p>The condenser half is the same failure one tier down, and is the one a player met first: one
+   * condenser against the chamber doubles a run, and every one after it that touches only tubing
+   * does nothing at all.
+   *
+   * @param helper the running test's handle on its own copy of the world
+   */
+  private static void noticesAPartAddedLater(GameTestHelper helper) {
+    TestStill still = buildTierThreeStill(helper);
+    PressureChamberBlockEntity chamber = still.chamber();
+
+    // The read that turns the next assertion into a question about staleness rather than about the
+    // ladder's rules.
+    helper.assertValueEqual(chamber.still().tier().tier(), 3, "the tier before the crystal");
+
+    helper.setBlock(CRYSTAL_POS, ModBlocks.RESONANCE_CRYSTAL.get());
+
+    helper.assertValueEqual(chamber.still().tier().tier(), 4, "the tier the crystal should raise");
+
+    helper.setBlock(BATCH_TUBING_POS, ModBlocks.ALCHEMICAL_TUBING.get());
+    helper.assertValueEqual(chamber.maximumBatch(), 1, "the ceiling before the condenser");
+
+    helper.setBlock(BATCH_CONDENSER_POS, ModBlocks.CONDENSER.get());
+
+    helper.assertValueEqual(chamber.maximumBatch(), 2, "the ceiling the condenser should raise");
+    helper.succeed();
+  }
+
+  /**
+   * Brews a tier-three recipe on tier-two fuel, and then on the fuel it actually asks for.
+   *
+   * <p>This is the whole fuel ladder made observable, which is the reason the tier recipes exist at
+   * all. Every rule in it is unit-tested in {@code core} against plain records; what cannot be
+   * checked there is that the datapack files name the tiers they claim to, that a fuel item
+   * resolves to the rung its tag puts it on, and that the two gates agree about a machine and a
+   * recipe that are both real. A recipe whose tier was written one too low would pass every unit
+   * test in the project and make the ladder decorative.
+   *
+   * <p>The first half asserts the brew did not move at all rather than that it was slow: a chamber
+   * that advanced even one tick would fail, so the assertion does not depend on how long the test
+   * waits, and the wait can be short.
+   *
+   * @param helper the running test's handle on its own copy of the world
+   */
+  private static void waitsForItsFuel(GameTestHelper helper) {
+    TestStill still = buildTierThreeStill(helper);
+    helper.assertValueEqual(
+        still.chamber().still().tier().tier(),
+        3,
+        "the tier of a still with a valve, a bellows, a funnel and a flue");
+
+    loadIngredients(still.chamber(), Items.MAGMA_CREAM, Items.BLAZE_POWDER);
+    // Alchemical Coal is the second rung and this recipe is on the third, so the brew is accepted
+    // and then never moves. Starting is not where the fuel is checked — a player may load a still
+    // and light it afterwards — so this is a running brew held still, not a refused one.
+    still.firebox().setItem(0, new ItemStack(ModItems.ALCHEMICAL_COAL.get()));
+    assertStarted(helper, still.chamber(), HourglassPreset.THIRTY);
+
+    helper.runAfterDelay(
+        BREW_GRACE_TICKS,
+        () -> {
+          helper.assertValueEqual(
+              still.chamber().brewSession().elapsedTicks(),
+              0,
+              "ticks elapsed on a tier-three brew burning tier-two fuel");
+
+          // The same recipe on the same machine with one rung more fire under it. The firebox is
+          // replaced rather than refuelled, because a chamber that is already alight will not look
+          // at its slot until the fuel it lit has burned down, and the coal has most of two minutes
+          // left on it.
+          helper.setBlock(FIREBOX_POS, Blocks.AIR);
+          helper.setBlock(FIREBOX_POS, ModBlocks.IGNITION_CHAMBER.get());
+          helper
+              .getBlockEntity(FIREBOX_POS, IgnitionChamberBlockEntity.class)
+              .setItem(0, new ItemStack(Items.BLAZE_ROD));
+
+          loadIngredients(still.chamber(), Items.MAGMA_CREAM, Items.BLAZE_POWDER);
+          assertStarted(helper, still.chamber(), HourglassPreset.THIRTY);
+
+          helper.runAfterDelay(
+              THIRTY_SECOND_BREW_TICKS + BREW_GRACE_TICKS,
+              () -> {
+                ItemStack brewed = still.chamber().getItem(PressureChamberBlockEntity.SLOT_OUTPUT);
+                helper.assertTrue(
+                    brewed.getItem() == Items.POTION,
+                    Component.literal(
+                        "a tier-three recipe should brew on a blaze rod, but the output holds "
+                            + brewed));
+
+                PotionContents contents = brewed.get(DataComponents.POTION_CONTENTS);
+                if (contents == null) {
+                  helper.fail("the brewed potion carries no potion contents");
+                  return;
+                }
+                List<MobEffectInstance> effects = contents.customEffects();
+                helper.assertValueEqual(
+                    effects.size(), 1, "number of effects on the fire resistance potion");
+                helper.assertTrue(
+                    FIRE_RESISTANCE_EFFECT.equals(
+                        BuiltInRegistries.MOB_EFFECT.getKey(
+                            effects.getFirst().getEffect().value())),
+                    Component.literal(
+                        "the tier-three potion should carry fire resistance, not "
+                            + effects.getFirst().getEffect()));
+                helper.succeed();
+              });
+        });
+  }
+
+  /**
+   * Fills the wells with a chosen number in each and the bottle slot with a chosen number.
+   *
+   * <p>Distinct from {@link #loadIngredients}, which puts exactly one in each well. A batch test
+   * needs the count to be the thing under test, so it is an argument here rather than a constant.
+   *
+   * @param chamber the still's chamber
+   * @param perWell how many to put in each ingredient well
+   * @param bottles how many glass bottles to put in the bottle slot
+   * @param ingredients the ingredients, first well first
+   */
+  private static void loadBatch(
+      PressureChamberBlockEntity chamber, int perWell, int bottles, Item... ingredients) {
+    for (int i = 0; i < ingredients.length; i++) {
+      chamber.setItem(
+          PressureChamberBlockEntity.SLOT_INGREDIENT_FIRST + i,
+          new ItemStack(ingredients[i], perWell));
+    }
+    chamber.setItem(
+        PressureChamberBlockEntity.SLOT_BOTTLE, new ItemStack(Items.GLASS_BOTTLE, bottles));
+  }
+
+  /**
+   * Turns batching on at a chosen size, in the two steps a player takes.
+   *
+   * @param chamber the still's chamber
+   * @param size the batch to dial in, which the machine may allow less of
+   */
+  private static void setBatch(PressureChamberBlockEntity chamber, int size) {
+    chamber.setBatchMultiplier(size);
+    chamber.toggleBatch();
   }
 
   /**

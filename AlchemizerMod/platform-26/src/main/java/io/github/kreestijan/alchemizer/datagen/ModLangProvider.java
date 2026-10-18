@@ -2,6 +2,7 @@ package io.github.kreestijan.alchemizer.datagen;
 
 import io.github.kreestijan.alchemizer.Alchemizer;
 import io.github.kreestijan.alchemizer.registry.ModBlocks;
+import io.github.kreestijan.alchemizer.registry.ModEntities;
 import io.github.kreestijan.alchemizer.registry.ModItems;
 import net.minecraft.data.PackOutput;
 import net.neoforged.neoforge.common.data.LanguageProvider;
@@ -39,9 +40,24 @@ public final class ModLangProvider extends LanguageProvider {
     addBlock(ModBlocks.IGNITION_CHAMBER, "Ignition Chamber");
     addBlock(ModBlocks.PRESSURE_CHAMBER, "Pressure Chamber");
     addBlock(ModBlocks.ALCHEMICAL_TANK, "Alchemical Tank");
+    addBlock(ModBlocks.COUNTER, "Counter");
+    addBlock(ModBlocks.AIR_PRESSURE_VALVE, "Air Pressure Valve");
+    addBlock(ModBlocks.BELLOWS, "Bellows");
+    addBlock(ModBlocks.FUNNEL, "Funnel");
+    addBlock(ModBlocks.FLUE_STACK, "Flue Stack");
+    addBlock(ModBlocks.RESONANCE_CRYSTAL, "Resonance Crystal");
+    addBlock(ModBlocks.CONDENSER, "Condenser");
+    addBlock(ModBlocks.ADVANCED_CONDENSER, "Advanced Condenser");
+    addBlock(ModBlocks.ALCHEMICAL_TUBING, "Alchemical Tubing");
 
     addItem(ModItems.ALCHEMICAL_COAL, "Alchemical Coal");
+    addItem(ModItems.ENHANCED_BLAZE_ROD, "Enhanced Blaze Rod");
     addItem(ModItems.MURKY_MESS, "Murky Mess");
+
+    // The mod's one entity. Its name is what a player sees above a customer if a name tag is ever
+    // put on one and in the entity's own debug output otherwise; it is generated here for the same
+    // reason a block's is, so that a type cannot be registered without a name.
+    addEntityType(ModEntities.CUSTOMER, "Customer");
 
     // A datapack potion cannot register a name of its own, so its display name is a lang key
     // derived
@@ -52,14 +68,35 @@ public final class ModLangProvider extends LanguageProvider {
     // are also the reason a datapack that adds a potion has to ship its own lang file.
     add(POTION_NAME_PREFIX + "alchemizer:test_potion", "Test Potion");
     add(POTION_NAME_PREFIX + "alchemizer:swiftness", "Potion of Swiftness");
+    add(POTION_NAME_PREFIX + "alchemizer:strength", "Potion of Strength");
+    add(POTION_NAME_PREFIX + "alchemizer:fire_resistance", "Potion of Fire Resistance");
+    add(POTION_NAME_PREFIX + "alchemizer:regeneration", "Potion of Regeneration");
 
     // The brewing screen. Each of these is looked up by the screens, and a missing one is a raw key
     // drawn across a panel rather than a missing name in an inventory — the same argument, and the
     // reason they belong here rather than beside the screen that uses them.
+    //
+    // "seconds" is the one key two screens share: the pressure chamber's hourglass buttons and the
+    // ignition chamber's fuel countdown both read it, and it is the whole of an hourglass button's
+    // label. One string in one place, because two keys holding the same text are two things to keep
+    // in step.
     add("gui.alchemizer.seconds", "%ss");
-    add("gui.alchemizer.hourglass.selected", "[%s]");
     add("gui.alchemizer.hourglass.tooltip", "Brew for %s seconds");
     add("gui.alchemizer.start", "Start");
+
+    // The batch control, which appears at the left of the controls row once a condenser is
+    // attached. The label is the multiplier with an x on it, because that is how the design says a
+    // batch is written and a player reading "3x" needs no second sentence.
+    add("gui.alchemizer.batch.label", "%sx");
+    add(
+        "gui.alchemizer.batch.tooltip.on",
+        "Brewing %s at a time. Scroll to change, click to stop.");
+    add(
+        "gui.alchemizer.batch.tooltip.off",
+        "Brew one at a time. Scroll to choose a batch, click to start.");
+    add(
+        "gui.alchemizer.batch.tooltip.busy",
+        "Brewing %s at a time. The batch is fixed until it finishes.");
 
     // The tank's contents, in millibuckets. Shown on hover over the gauge on both screens that draw
     // one, and on hover over the tank item itself, so all three readings of one tank agree.
@@ -85,5 +122,41 @@ public final class ModLangProvider extends LanguageProvider {
     add("gui.alchemizer.still.problem.no_tank", "No tank attached");
     add("gui.alchemizer.still.problem.unknown_tier", "Unknown still shape");
     add("gui.alchemizer.still.problem.not_in_a_world", "Not placed in a world");
+    add("gui.alchemizer.still.problem.multiple_crystal", "Maximum 1 resonance crystal allowed.");
+    add("gui.alchemizer.still.problem.tubing_too_long", "Tubing run too long");
+
+    // The recipe book, which appears beside the panel once a funnel is on top of the chamber. A row
+    // is the potion's own name — taken from the output stack, so a datapack's potions are named
+    // without this mod knowing how — and then the tier and the setting the recipe brews at, which
+    // is the pair of numbers a player has to clear before loading it. The setting reuses the shared
+    // seconds key rather than writing the unit a second time.
+    add("gui.alchemizer.book.tooltip", "Recipe book");
+    add("gui.alchemizer.book.empty", "No recipes");
+    add("gui.alchemizer.book.tier", "T%s %s");
+
+    // The Counter's screen: who owns the shop, who else may trade at it, and whether it is trading.
+    // The two headings carry a count rather than the names alone, because the panel draws three
+    // rows of each and a shop may hold more than that — a heading reading four above three names is
+    // the panel saying which of its limits the player has run into.
+    //
+    // "unnamed" is what an owner with no name is drawn as. The server can only name a player its
+    // own
+    // name cache has seen, which a world copied between servers will not have, and a blank after
+    // "Owner:" would read as a fault in the screen rather than as a missing name.
+    add("gui.alchemizer.counter.no_shop", "This Counter has no shop yet.");
+    add("gui.alchemizer.counter.unnamed", "Unnamed");
+    add("gui.alchemizer.counter.owner", "Owner: %s");
+    add("gui.alchemizer.counter.open", "Shop open - click to close");
+    add("gui.alchemizer.counter.closed", "Shop closed - click to open");
+    add("gui.alchemizer.counter.coowners", "Co-owners (%s)");
+    add("gui.alchemizer.counter.candidates", "Add a co-owner (%s)");
+
+    // The customer dialogue, which is opened by right-clicking one of them: a window titled after
+    // what it is about and two options, which for now do the same thing. They are named rather than
+    // described because the difference between them is the design's business and not the player's
+    // yet — see CustomerDialogueMenu.
+    add("gui.alchemizer.customer.dialogue", "Customer");
+    add("gui.alchemizer.customer.serve", "Serve");
+    add("gui.alchemizer.customer.refuse", "Refuse");
   }
 }

@@ -47,8 +47,13 @@ public class AlchemicalTankMenu extends AbstractContainerMenu {
 
   private static final int HOTBAR_SLOT_END = HOTBAR_SLOT_START + 9;
 
-  /** The player inventory's origin. */
-  private static final int INVENTORY_X = 8;
+  /**
+   * The player inventory's origin.
+   *
+   * <p>Public because the screen lines the inventory's label up with the well this puts the first
+   * slot in, which is one pixel left of it — see {@code PanelLabels#inventoryLabelX}.
+   */
+  public static final int INVENTORY_X = 8;
 
   private static final int INVENTORY_Y = 84;
 

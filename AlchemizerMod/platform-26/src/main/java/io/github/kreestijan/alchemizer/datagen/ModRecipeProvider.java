@@ -50,6 +50,20 @@ public final class ModRecipeProvider extends RecipeProvider {
         .unlockedBy("has_coal", has(ItemTags.COALS))
         .save(output);
 
+    // The top rung of the fuel ladder. Alchemical Coal's recipe reads off a vanilla one — coal with
+    // redstone round it — and this one has nothing to read off, so it is its own idea: a blaze rod
+    // ringed by glowstone, four corners left open. Placeholder like the rest, and the same argument
+    // applies. A player who sees it in the recipe book can tell what it is made of, which is the
+    // whole of what the ladder asks of a fuel: that where it sits is guessable from what it is.
+    shaped(RecipeCategory.MISC, ModItems.ENHANCED_BLAZE_ROD.get())
+        .pattern(" G ")
+        .pattern("GBG")
+        .pattern(" G ")
+        .define('G', Items.GLOWSTONE_DUST)
+        .define('B', Items.BLAZE_ROD)
+        .unlockedBy("has_blaze_rod", has(Items.BLAZE_ROD))
+        .save(output);
+
     // The three machine blocks. These are placeholders, and they are deliberately cheap and
     // familiar: nothing here is signed off, and what they are for is putting a still together in a
     // test world without dropping into creative first. Each reads off the vanilla block it is
@@ -85,6 +99,19 @@ public final class ModRecipeProvider extends RecipeProvider {
         .define('G', Items.GLASS)
         .define('B', Items.BUCKET)
         .unlockedBy("has_bucket", has(Items.BUCKET))
+        .save(output);
+
+    // A sign-off replaces this too. Planks around a chest, because a counter is a place to put
+    // things
+    // and a chest is the one thing every player already reads that way; it unlocks off the chest so
+    // that a player who has one finds the block without having to be told it exists.
+    shaped(RecipeCategory.MISC, ModBlocks.COUNTER.get())
+        .pattern("PPP")
+        .pattern("PCP")
+        .pattern("PPP")
+        .define('P', ItemTags.PLANKS)
+        .define('C', Items.CHEST)
+        .unlockedBy("has_chest", has(Items.CHEST))
         .save(output);
 
     // Emptying a tank. A tank carries its water, and this is how a player gets it out again: the
