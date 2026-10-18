@@ -445,17 +445,19 @@ is on top of the chamber.
   tier 4 a resonance crystal touching any part. A part built in the right shape but in the wrong
   place is not counted and is not a fault — a valve put down four blocks away must not break a still
   that is working.
-- **Eight blocks**, all plain and none with a block entity, because every number they contribute is
-  a count the validator makes: the Air Pressure Valve, the Bellows, the Funnel, the Flue Stack, the
-  Resonance Crystal, the Condenser, the Advanced Condenser and Alchemical Tubing. Breaking any of
-  them tells the chamber, so losing a valve loses the brew the way losing a tank already did.
-  (Since changed: breaking a part now pauses the brew, and only the chamber's own break ends it —
-  see the machine failure rules entry.)
+- **Eight blocks**, none with a block entity, because every number they contribute is a count the
+  validator makes: the Air Pressure Valve, the Bellows, the Funnel, the Flue Stack, the Resonance
+  Crystal, the Condenser, the Advanced Condenser and Alchemical Tubing. Breaking any of them tells
+  the chamber, so losing a valve loses the brew the way losing a tank already did. (Since changed:
+  breaking a part now pauses the brew, and only the chamber's own break ends it — see the machine
+  failure rules entry.)
 - **Alchemical Tubing** carries a tank's or a condenser's connection to the chamber, up to
   `maxTubingLength` blocks along the path. A run longer than that is a fault of its own — "Tubing
   run too long" — rather than the far tank quietly reading as "No tank attached", which would send a
-  player looking for a tank that is right there. Tubing ships as a **full cube**: a connected pipe
-  shape is a model and an art job of its own, and it is not done.
+  player looking for a tank that is right there. Tubing is drawn as a connected 4-pixel glass pipe:
+  an arm on every side that touches another tube, the chamber, a tank or a condenser, and the same
+  pipe shape for the outline and the collision box. Its texture is translucent, which puts the pipe
+  in the translucent render pass.
 - **Two new faults** on the status line, `Maximum 1 resonance crystal allowed.` and `Tubing run too
   long`, both of which are unavoidable rather than a part merely being in the wrong place.
 

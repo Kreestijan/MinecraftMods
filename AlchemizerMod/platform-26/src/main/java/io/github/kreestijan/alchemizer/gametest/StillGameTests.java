@@ -1,10 +1,12 @@
 package io.github.kreestijan.alchemizer.gametest;
 
 import io.github.kreestijan.alchemizer.Alchemizer;
+import io.github.kreestijan.alchemizer.brewing.block.AlchemicalTubingBlock;
 import io.github.kreestijan.alchemizer.brewing.blockentity.PressureChamberBlockEntity;
 import io.github.kreestijan.alchemizer.registry.ModBlocks;
 import java.util.function.Consumer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.gametest.framework.FunctionGameTestInstance;
@@ -13,6 +15,8 @@ import net.minecraft.gametest.framework.TestData;
 import net.minecraft.gametest.framework.TestEnvironmentDefinition;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.event.RegisterGameTestsEvent;
 import net.neoforged.neoforge.registries.DeferredHolder;
@@ -67,6 +71,12 @@ public final class StillGameTests {
           TEST_FUNCTIONS.register(
               "still_forms_from_its_parts", () -> StillGameTests::stillFormsFromItsParts);
 
+  private static final DeferredHolder<Consumer<GameTestHelper>, Consumer<GameTestHelper>>
+      TUBING_CONNECTS =
+          TEST_FUNCTIONS.register(
+              "tubing_connects_to_its_neighbours",
+              () -> StillGameTests::tubingConnectsToItsNeighbours);
+
   /** Vanilla's blank template — {@code data/minecraft/structure/empty.nbt}. */
   private static final Identifier EMPTY_STRUCTURE = Identifier.withDefaultNamespace("empty");
 
@@ -110,6 +120,11 @@ public final class StillGameTests {
         Identifier.fromNamespaceAndPath(Alchemizer.MOD_ID, "still_forms_from_its_parts"),
         new FunctionGameTestInstance(
             STILL_FORMS.getKey(),
+            new TestData<>(environment, EMPTY_STRUCTURE, MAX_TICKS, SETUP_TICKS, true)));
+    event.registerTest(
+        Identifier.fromNamespaceAndPath(Alchemizer.MOD_ID, "tubing_connects_to_its_neighbours"),
+        new FunctionGameTestInstance(
+            TUBING_CONNECTS.getKey(),
             new TestData<>(environment, EMPTY_STRUCTURE, MAX_TICKS, SETUP_TICKS, true)));
   }
 
@@ -160,6 +175,70 @@ public final class StillGameTests {
             Component.literal(
                 "breaking the tank the still was drawing through leaves it unformed, even though a"
                     + " tank is still standing next to the chamber"));
+
+    helper.succeed();
+  }
+
+  /**
+   * Places a tube between a chamber and a tank, checks the arms that should be there are there,
+   * checks that the block is a 4-pixel pipe rather than a full cube, then breaks the tank and
+   * checks that the arm goes with it.
+   *
+   * <p>The tube is placed first on purpose. The test helper sets a block's default state rather
+   * than going through the item's placement path, so the arms are not computed by {@code
+   * getStateForPlacement}; they arrive as the chamber and the tank are placed and the tube is asked
+   * to update the side that changed. That is the path a player gets when a still is built in any
+   * order, and it is the one worth testing.
+   *
+   * @param helper the running test's handle on its own copy of the world
+   */
+  private static void tubingConnectsToItsNeighbours(GameTestHelper helper) {
+    BlockPos firebox = new BlockPos(0, 0, 0);
+    BlockPos chamber = new BlockPos(0, 1, 0);
+    BlockPos tubing = new BlockPos(1, 1, 0);
+    BlockPos tank = new BlockPos(2, 1, 0);
+
+    helper.setBlock(tubing, ModBlocks.ALCHEMICAL_TUBING.get());
+    helper.setBlock(firebox, ModBlocks.IGNITION_CHAMBER.get());
+    helper.setBlock(chamber, ModBlocks.PRESSURE_CHAMBER.get());
+    helper.setBlock(tank, ModBlocks.ALCHEMICAL_TANK.get());
+
+    helper.assertBlockState(
+        tubing,
+        state ->
+            state.getValue(AlchemicalTubingBlock.WEST)
+                && state.getValue(AlchemicalTubingBlock.EAST)
+                && !state.getValue(AlchemicalTubingBlock.NORTH)
+                && !state.getValue(AlchemicalTubingBlock.SOUTH)
+                && !state.getValue(AlchemicalTubingBlock.UP)
+                && !state.getValue(AlchemicalTubingBlock.DOWN),
+        state ->
+            Component.literal(
+                "tubing between the chamber and a tank should grow an arm on each side and nowhere"
+                    + " else: "
+                    + state));
+
+    BlockState state = helper.getBlockState(tubing);
+    VoxelShape outline = state.getShape(helper.getLevel(), helper.absolutePos(tubing));
+    helper.assertTrue(
+        outline.min(Direction.Axis.Y) == 6.0 / 16.0 && outline.max(Direction.Axis.Y) == 10.0 / 16.0,
+        Component.literal(
+            "tubing's outline should be a 4-pixel pipe, not a full block: " + outline));
+
+    VoxelShape collision = state.getCollisionShape(helper.getLevel(), helper.absolutePos(tubing));
+    helper.assertTrue(
+        collision.min(Direction.Axis.Y) == 6.0 / 16.0
+            && collision.max(Direction.Axis.Y) == 10.0 / 16.0,
+        Component.literal(
+            "tubing's collision should be the pipe, not the whole block: " + collision));
+
+    helper.destroyBlock(tank);
+
+    helper.assertBlockState(
+        tubing,
+        stateAfter -> !stateAfter.getValue(AlchemicalTubingBlock.EAST),
+        stateAfter ->
+            Component.literal("breaking the tank should take the east arm with it: " + stateAfter));
 
     helper.succeed();
   }

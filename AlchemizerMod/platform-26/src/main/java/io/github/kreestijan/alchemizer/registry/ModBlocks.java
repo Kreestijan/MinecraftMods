@@ -2,6 +2,7 @@ package io.github.kreestijan.alchemizer.registry;
 
 import io.github.kreestijan.alchemizer.Alchemizer;
 import io.github.kreestijan.alchemizer.brewing.block.AlchemicalTankBlock;
+import io.github.kreestijan.alchemizer.brewing.block.AlchemicalTubingBlock;
 import io.github.kreestijan.alchemizer.brewing.block.IgnitionChamberBlock;
 import io.github.kreestijan.alchemizer.brewing.block.PressureChamberBlock;
 import io.github.kreestijan.alchemizer.brewing.block.StillPartBlock;
@@ -183,16 +184,22 @@ public final class ModBlocks {
   /**
    * The pipe that lets a tank or a condenser stand further off than face-to-face.
    *
-   * <p>It is deliberately a full cube for now. A pipe that connects to its neighbours needs a block
-   * state per side and a model per combination, which is an art and model job of its own and not
-   * something the tier rules depend on. What matters here is that the validator walks through it.
+   * <p>It is the one part that is not a plain box: a 4-pixel glass tube with an arm toward every
+   * side that touches another tube, the chamber, a tank or a condenser. The shape is shared by the
+   * model, the selection outline and the collision box, so a run of tubing is a line of thin pipes
+   * rather than a wall of blocks. It is also the one part whose appearance depends on its texture
+   * being translucent; see {@link AlchemicalTubingBlock}.
    */
-  public static final DeferredBlock<StillPartBlock> ALCHEMICAL_TUBING =
+  public static final DeferredBlock<AlchemicalTubingBlock> ALCHEMICAL_TUBING =
       BLOCKS.registerBlock(
           "alchemical_tubing",
-          StillPartBlock::new,
+          AlchemicalTubingBlock::new,
           properties ->
-              properties.mapColor(MapColor.METAL).strength(1.5F, 6.0F).sound(SoundType.METAL));
+              properties
+                  .mapColor(MapColor.METAL)
+                  .strength(1.5F, 6.0F)
+                  .sound(SoundType.GLASS)
+                  .noOcclusion());
 
   /**
    * The storefront: the block a shop is built around.

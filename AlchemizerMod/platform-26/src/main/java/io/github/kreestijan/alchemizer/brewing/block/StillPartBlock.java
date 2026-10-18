@@ -9,14 +9,17 @@ import net.minecraft.world.level.block.state.BlockState;
 /**
  * A still part that is nothing but a block.
  *
- * <p>The eight parts the still grows after the tank — the air pressure valve, the bellows, the
- * funnel, the flue stack, the resonance crystal, the two condensers and the tubing — are one class
- * because they are one behaviour. Every number any of them contributes is a count the validator
- * takes by looking at the world; none of them holds state, ticks, saves anything or answers a
- * right-click. What is left is a block with a name and a material, which is the {@code Properties}
- * the registry hands in. Eight classes here would be the same fifteen lines and the same comment
- * eight times, and the one thing they would genuinely differ in — material and hardness — is
- * already the argument.
+ * <p>The seven parts the still grows after the tank — the air pressure valve, the bellows, the
+ * funnel, the flue stack, the resonance crystal and the two condensers — are one class because they
+ * are one behaviour. Every number any of them contributes is a count the validator takes by looking
+ * at the world; none of them holds state, ticks, saves anything or answers a right-click. What is
+ * left is a block with a name and a material, which is the {@code Properties} the registry hands
+ * in. Seven classes here would be the same fifteen lines and the same comment seven times, and the
+ * one thing they would genuinely differ in — material and hardness — is already the argument.
+ *
+ * <p>The tubing is deliberately not one of them. It has the same removal contract, but it also has
+ * a connected shape and six block-state properties, which is a second behaviour; see {@link
+ * AlchemicalTubingBlock}.
  *
  * <p>The single behaviour they do share is the point of this class. A part that is broken has to
  * tell the nearest pressure chamber, and that is not a courtesy: the chamber decides once, when the
