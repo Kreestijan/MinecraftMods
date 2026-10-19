@@ -3,6 +3,42 @@
 Notable changes to Alchemizer, newest first. This project does not yet follow a numbered release
 scheme; entries are grouped by the milestone that produced them.
 
+## Unreleased — the still parts stop being cubes
+
+The seven upgrade parts were still boxes with a picture on each face. They now have models shaped
+like what they are, and the bellows is the one that turns to face the block it was hung on.
+
+### Changed
+
+- **Each part has its own shape.** The Air Pressure Valve is a flanged hub, the Bellows two thick
+  caps and a middle plate with a side nozzle sandwiching pleated bands, the Funnel a hopper, the
+  Flue Stack a collared chimney, the Resonance Crystal a cluster of shards, and the Condensers
+  canisters with a recessed glass band. Every element stays inside the block and every face samples
+  the whole of its sprite, so the placeholder art is not cropped on the small faces.
+- **Collision and selection follow the model.** A part is pointed at and walked into as the shape
+  it looks like, not as the empty corners of its block. The shapes stay non-empty, so customers
+  still treat a part as an obstacle.
+- **The Bellows has a facing.** Placed against a block, its mounting plate turns to that block; a
+  click on a top or bottom face falls back to the player's facing. This is appearance only — the
+  validator still counts a bellows on any of a valve's four side faces, and a bellows from an older
+  save loads facing north.
+- **The Bellows can breathe, and the player chooses when.** Shift-right-clicking a bellows cycles
+  it through always working (the default), working only while a brew is progressing, and standing
+  still; each change is announced in chat with a ding. Always-working needs neither a still nor a
+  brew. While-brewing listens to the chamber, which only calls the bellows its validator actually
+  counts — the bellows has to be on a valve of the machine, not merely nearby. The mode is block
+  state, so breaking and replacing the bellows resets it to always. The animation is drawn by a
+  client block-entity renderer that keeps the three full squares rigid: the middle plate stays in
+  the chunk mesh, the caps are drawn as translated — never scaled — models, and only the pleat bands
+  compress between them. The renderer fetches each piece's ordinary block model through a
+  rendering-only `part` state property, so the pieces keep normal block lighting and no custom
+  geometry is involved. The state only flips once when the animation starts or stops; there is no
+  per-frame block update or chunk-section rebuild. The renderer's block entity holds no data and has
+  no ticker.
+- **The model art is still placeholder.** Seven new sprites carry the faces that differ from the
+  body (bellows mount and planks, funnel inside and top, flue opening, condenser caps and glass).
+  They are drawn to be redrawn; the face map is in `Desktop\AlchemizerArt\block-texture-face-map.md`.
+
 ## Unreleased — the fuel moves into the pressure chamber
 
 The Ignition Chamber's change of heart: its GUI is gone and so are its features. It stays a

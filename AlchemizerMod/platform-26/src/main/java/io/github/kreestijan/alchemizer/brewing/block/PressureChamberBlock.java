@@ -94,6 +94,7 @@ public class PressureChamberBlock extends BaseEntityBlock {
       BlockState state, ServerLevel level, BlockPos pos, boolean movedByPiston) {
     super.affectNeighborsAfterRemoval(state, level, pos, movedByPiston);
     PressureChamberBlockEntity.writeFireboxLit(level, pos.below(), false);
+    PressureChamberBlockEntity.stopAnimationsNear(level, pos);
   }
 
   /**

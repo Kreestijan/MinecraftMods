@@ -21,6 +21,7 @@ import io.github.kreestijan.alchemizer.gametest.CustomerDialogueGameTests;
 import io.github.kreestijan.alchemizer.gametest.CustomerGameTests;
 import io.github.kreestijan.alchemizer.gametest.MenuGameTests;
 import io.github.kreestijan.alchemizer.gametest.StillGameTests;
+import io.github.kreestijan.alchemizer.gametest.StillPartGameTests;
 import io.github.kreestijan.alchemizer.registry.ModAttachments;
 import io.github.kreestijan.alchemizer.registry.ModBlockEntities;
 import io.github.kreestijan.alchemizer.registry.ModBlocks;
@@ -105,6 +106,8 @@ public final class Alchemizer {
     // tests; the tests themselves are only given a form when it is. See StillGameTests.
     StillGameTests.register(modEventBus);
     modEventBus.addListener(StillGameTests::onRegisterGameTests);
+    StillPartGameTests.register(modEventBus);
+    modEventBus.addListener(StillPartGameTests::onRegisterGameTests);
     BrewGameTests.register(modEventBus);
     modEventBus.addListener(BrewGameTests::onRegisterGameTests);
     MenuGameTests.register(modEventBus);

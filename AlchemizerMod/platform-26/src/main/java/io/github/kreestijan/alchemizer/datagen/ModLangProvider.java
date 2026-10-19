@@ -43,6 +43,11 @@ public final class ModLangProvider extends LanguageProvider {
     addBlock(ModBlocks.COUNTER, "Counter");
     addBlock(ModBlocks.AIR_PRESSURE_VALVE, "Air Pressure Valve");
     addBlock(ModBlocks.BELLOWS, "Bellows");
+    // The shift-right-click mode cycle. The keys are built by BellowsBlock.Mode#messageKey, so
+    // these three are what stand between the click and a raw key in chat.
+    add("message.alchemizer.bellows.always", "Bellows: always working");
+    add("message.alchemizer.bellows.while_brewing", "Bellows: works while brewing");
+    add("message.alchemizer.bellows.never", "Bellows: standing still");
     addBlock(ModBlocks.FUNNEL, "Funnel");
     addBlock(ModBlocks.FLUE_STACK, "Flue Stack");
     addBlock(ModBlocks.RESONANCE_CRYSTAL, "Resonance Crystal");

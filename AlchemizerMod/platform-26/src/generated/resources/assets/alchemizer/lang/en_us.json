@@ -53,5 +53,8 @@
   "item.minecraft.potion.effect.alchemizer:strength": "Potion of Strength",
   "item.minecraft.potion.effect.alchemizer:swiftness": "Potion of Swiftness",
   "item.minecraft.potion.effect.alchemizer:test_potion": "Test Potion",
-  "itemGroup.alchemizer": "Alchemizer"
+  "itemGroup.alchemizer": "Alchemizer",
+  "message.alchemizer.bellows.always": "Bellows: always working",
+  "message.alchemizer.bellows.never": "Bellows: standing still",
+  "message.alchemizer.bellows.while_brewing": "Bellows: works while brewing"
 }

@@ -3,6 +3,7 @@ package io.github.kreestijan.alchemizer.brewing.blockentity;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import io.github.kreestijan.alchemizer.Alchemizer;
+import io.github.kreestijan.alchemizer.brewing.block.AnimatedStillPart;
 import io.github.kreestijan.alchemizer.brewing.block.IgnitionChamberBlock;
 import io.github.kreestijan.alchemizer.common.fuel.FuelTags;
 import io.github.kreestijan.alchemizer.common.item.StackSignatureFactory;
@@ -200,6 +201,15 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
    * definitions snapshot so that a datapack reload invalidates it without anyone having to say so.
    */
   private @Nullable NextBrew nextBrew;
+
+  /**
+   * Whether the chamber last saw the brew moving, or null before the first tick.
+   *
+   * <p>Not saved: a chunk that reloads starts with null, so the first tick runs the stop scan even
+   * when nothing is brewing and clears a bellows left waiting from before the reload. Activation
+   * runs every tick while a brew moves, so it needs no cached answer.
+   */
+  private @Nullable Boolean animating;
 
   /** The hourglass setting the player last chose. Session state, so deliberately not saved. */
   private HourglassPreset selectedPreset = HourglassPreset.FIVE;
@@ -475,14 +485,17 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
     }
 
     PlannedBrew current = planned;
+    boolean progressing = false;
     if (current != null) {
       if (session.isRunning() && canProgress(current)) {
         session = session.advance(true);
+        progressing = true;
         setChanged();
       }
 
       if (session.isComplete()) {
         finish(current);
+        progressing = false;
       }
     }
 
@@ -491,6 +504,7 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
     // one must keep it lit. The per-tick cost is one isLoaded plus one block-state read per
     // chamber; setBlock fires only on the transition.
     writeFireboxLit(level, worldPosition.below(), isLit);
+    writeAnimations(level, progressing);
     if (wasLit || isLit) {
       setChanged();
     }
@@ -520,6 +534,89 @@ public class PressureChamberBlockEntity extends BlockEntity implements Container
       // UPDATE_ALL rather than a lighter flag: the lit state is what a client renders, so it has
       // to reach the client, and the neighbours care because the light level changes with it.
       level.setBlock(firebox, state.setValue(IgnitionChamberBlock.LIT, lit), Block.UPDATE_ALL);
+    }
+  }
+
+  /**
+   * Starts the connected bellows while the brew is moving, and stops the ones that were told to
+   * wait for it when the brew stops.
+   *
+   * <p>Activation asks the validator for the bellows the machine actually counts, so a bellows
+   * standing in the same room is not animated. It runs every tick because a bellows placed during a
+   * brew has to pick the animation up without waiting for a start or stop; the part ignores the
+   * call when it is already moving, so the repeated call is free.
+   *
+   * <p>Stopping scans the radius instead, because the still may no longer be formed and there is no
+   * counted set left to visit. The part's mode decides whether it obeys, so an always-on bellows
+   * keeps breathing.
+   *
+   * @param level the server level
+   * @param active whether a brew is progressing
+   */
+  private void writeAnimations(Level level, boolean active) {
+    if (active) {
+      animating = true;
+      for (BlockPos bellows : still.bellowsPositions(level, worldPosition)) {
+        if (!level.isLoaded(bellows)) {
+          continue;
+        }
+        BlockState state = level.getBlockState(bellows);
+        if (state.getBlock() instanceof AnimatedStillPart part) {
+          part.setAnimating(level, bellows, state, true);
+        }
+      }
+      return;
+    }
+
+    if (animating != null && !animating) {
+      return;
+    }
+    animating = false;
+    writeAnimationsNear(level, worldPosition, false);
+  }
+
+  /**
+   * Stops every animated part around a chamber that is leaving the world.
+   *
+   * <p>Without this a broken chamber would leave its bellows breathing forever: the parts have
+   * their own timers and nothing else knows to tell them to stop.
+   *
+   * @param level the server level
+   * @param chamber where the chamber was
+   */
+  public static void stopAnimationsNear(ServerLevel level, BlockPos chamber) {
+    writeAnimationsNear(level, chamber, false);
+  }
+
+  /**
+   * @param level the level
+   * @param center the chamber
+   * @param active whether the nearby parts should animate
+   */
+  private static void writeAnimationsNear(Level level, BlockPos center, boolean active) {
+    try {
+      int radius = ConfigCache.current().scanRadius();
+      BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+      for (int x = -radius; x <= radius; x++) {
+        for (int y = -radius; y <= radius; y++) {
+          for (int z = -radius; z <= radius; z++) {
+            cursor.set(center.getX() + x, center.getY() + y, center.getZ() + z);
+            if (!level.isLoaded(cursor)) {
+              continue;
+            }
+            BlockState state = level.getBlockState(cursor);
+            if (state.getBlock() instanceof AnimatedStillPart part) {
+              part.setAnimating(level, cursor.immutable(), state, active);
+            }
+          }
+        }
+      }
+    } catch (RuntimeException failure) {
+      Alchemizer.LOGGER.error(
+          "Alchemizer: could not animate the parts around {} in {}",
+          center,
+          level.dimension().identifier(),
+          failure);
     }
   }
 

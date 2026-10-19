@@ -1,11 +1,13 @@
 package io.github.kreestijan.alchemizer.client;
 
 import io.github.kreestijan.alchemizer.Alchemizer;
+import io.github.kreestijan.alchemizer.client.bellows.BellowsRenderer;
 import io.github.kreestijan.alchemizer.client.customer.CustomerRenderer;
 import io.github.kreestijan.alchemizer.client.screen.AlchemicalTankScreen;
 import io.github.kreestijan.alchemizer.client.screen.CounterScreen;
 import io.github.kreestijan.alchemizer.client.screen.CustomerDialogueScreen;
 import io.github.kreestijan.alchemizer.client.screen.PressureChamberScreen;
+import io.github.kreestijan.alchemizer.registry.ModBlockEntities;
 import io.github.kreestijan.alchemizer.registry.ModEntities;
 import io.github.kreestijan.alchemizer.registry.ModMenus;
 import net.neoforged.api.distmarker.Dist;
@@ -62,5 +64,6 @@ public final class ClientSetup {
   @SubscribeEvent
   public static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
     event.registerEntityRenderer(ModEntities.CUSTOMER.get(), CustomerRenderer::new);
+    event.registerBlockEntityRenderer(ModBlockEntities.BELLOWS.get(), BellowsRenderer::new);
   }
 }

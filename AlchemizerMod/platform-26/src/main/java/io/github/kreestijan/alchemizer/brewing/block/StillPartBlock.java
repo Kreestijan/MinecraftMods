@@ -3,8 +3,12 @@ package io.github.kreestijan.alchemizer.brewing.block;
 import io.github.kreestijan.alchemizer.brewing.blockentity.PressureChamberBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 /**
  * A still part that is nothing but a block.
@@ -30,11 +34,33 @@ import net.minecraft.world.level.block.state.BlockState;
  */
 public class StillPartBlock extends Block {
 
+  /** The part's outline and collision box, or the full cube for a part that still is one. */
+  private final VoxelShape shape;
+
   /**
    * @param properties the block's properties, already stamped with its registry id
    */
   public StillPartBlock(Properties properties) {
+    this(properties, Shapes.block());
+  }
+
+  /**
+   * @param properties the block's properties, already stamped with its registry id
+   * @param shape the outline and collision box, in pixels
+   */
+  public StillPartBlock(Properties properties, VoxelShape shape) {
     super(properties);
+    this.shape = shape;
+  }
+
+  /**
+   * The shape is the model's own footprint, so a player points at what they can see instead of at
+   * the empty corners of the block. Nothing in the still's rules reads it.
+   */
+  @Override
+  protected VoxelShape getShape(
+      BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
+    return shape;
   }
 
   @Override

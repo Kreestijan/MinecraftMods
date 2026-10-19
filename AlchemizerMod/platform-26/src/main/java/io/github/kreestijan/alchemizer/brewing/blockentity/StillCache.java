@@ -55,7 +55,24 @@ final class StillCache {
    *     not form a still
    */
   Set<BlockPos> tankPositions(Level level, BlockPos origin) {
-    Set<RelativePos> cells = current(level, origin).tanks();
+    return positions(current(level, origin).tanks(), origin);
+  }
+
+  /**
+   * @param level the world the chamber is in
+   * @param origin the chamber's own position, which the validator treats as the origin
+   * @return where the bellows the machine counts are; empty when the parts do not form a still
+   */
+  Set<BlockPos> bellowsPositions(Level level, BlockPos origin) {
+    return positions(current(level, origin).bellows(), origin);
+  }
+
+  /**
+   * @param cells positions relative to the chamber
+   * @param origin the chamber's own position
+   * @return the same cells as absolute positions
+   */
+  private static Set<BlockPos> positions(Set<RelativePos> cells, BlockPos origin) {
     Set<BlockPos> positions = new HashSet<>(cells.size());
     for (RelativePos cell : cells) {
       positions.add(origin.offset(cell.x(), cell.y(), cell.z()));

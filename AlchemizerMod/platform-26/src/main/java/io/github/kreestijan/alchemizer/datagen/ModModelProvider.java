@@ -45,7 +45,7 @@ import net.neoforged.neoforge.client.model.generators.template.FaceBuilder;
 public final class ModModelProvider extends ModelProvider {
 
   /** Vanilla's block parent, for the standard display transforms and side lighting. */
-  private static final Identifier BLOCK_PARENT = Identifier.withDefaultNamespace("block/block");
+  static final Identifier BLOCK_PARENT = Identifier.withDefaultNamespace("block/block");
 
   /**
    * One pipe arm, authored toward -Z. Five faces: the four sides and the outer end, which is culled
@@ -137,16 +137,10 @@ public final class ModModelProvider extends ModelProvider {
     // switch on.
     blockModels.createTrivialBlock(ModBlocks.PRESSURE_CHAMBER.get(), TexturedModel.CUBE_TOP_BOTTOM);
 
-    // The still parts. A single texture on all six faces is honest for all of them: a valve, a
-    // bellows and a condenser are metal boxes with a picture on them. Tubing is not one of these;
-    // it has a connected shape and is generated separately below.
-    blockModels.createTrivialBlock(ModBlocks.AIR_PRESSURE_VALVE.get(), TexturedModel.CUBE);
-    blockModels.createTrivialBlock(ModBlocks.BELLOWS.get(), TexturedModel.CUBE);
-    blockModels.createTrivialBlock(ModBlocks.FUNNEL.get(), TexturedModel.CUBE);
-    blockModels.createTrivialBlock(ModBlocks.FLUE_STACK.get(), TexturedModel.CUBE);
-    blockModels.createTrivialBlock(ModBlocks.RESONANCE_CRYSTAL.get(), TexturedModel.CUBE);
-    blockModels.createTrivialBlock(ModBlocks.CONDENSER.get(), TexturedModel.CUBE);
-    blockModels.createTrivialBlock(ModBlocks.ADVANCED_CONDENSER.get(), TexturedModel.CUBE);
+    // The still parts each get a shape of their own rather than a box with a picture on it. The
+    // bellows is the one that turns with a facing; the other six are fixed. Tubing stays separate
+    // because its shape is connected and its model is a multipart.
+    StillPartModels.register(blockModels);
     createAlchemicalTubingModels(blockModels);
 
     itemModels.generateFlatItem(ModItems.ALCHEMICAL_COAL.get(), ModelTemplates.FLAT_ITEM);
@@ -243,7 +237,7 @@ public final class ModModelProvider extends ModelProvider {
    * @return the same face, now texture-mapped across all 16 pixels
    */
   private static FaceBuilder fullFace(FaceBuilder face) {
-    return face.texture(TextureSlot.TEXTURE).uvs(0.0F, 0.0F, 16.0F, 16.0F);
+    return StillPartTemplates.full(face, TextureSlot.TEXTURE);
   }
 
   /**

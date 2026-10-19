@@ -51,21 +51,27 @@ public final class StillValidator {
   private StillValidator() {}
 
   /**
-   * The verdict on a still, and the tanks it draws on.
+   * The verdict on a still, the tanks it draws on and the bellows that count as part of it.
    *
-   * <p>The two travel together because they come from one scan. Asking the world twice — once for
+   * <p>The three travel together because they come from one scan. Asking the world twice — once for
    * "is this a still" and once for "which tanks feed it" — would let a block change between the two
-   * answers, and would let a caller hold a verdict and a tank list that disagree.
+   * answers, and would let a caller hold a verdict and a tank list that disagree. The bellows are
+   * here for the same reason: they are the exact set the machine counts, so a caller that wants to
+   * animate them can do so without re-deriving the placement rule.
    *
    * @param result whether the parts form a still, and at what tier
    * @param tanks the cells of every tank connected to the pressure chamber; empty when the parts do
    *     not form a still, since an unformed machine must not be able to draw water
+   * @param bellows the cells of every bellows the machine counts; empty when the parts do not form
+   *     a still
    */
-  public record Inspection(ValidationResult result, Set<RelativePos> tanks) {
+  public record Inspection(
+      ValidationResult result, Set<RelativePos> tanks, Set<RelativePos> bellows) {
 
     public Inspection {
       Objects.requireNonNull(result, "result");
       tanks = Set.copyOf(Objects.requireNonNull(tanks, "tanks"));
+      bellows = Set.copyOf(Objects.requireNonNull(bellows, "bellows"));
     }
   }
 
@@ -99,7 +105,8 @@ public final class StillValidator {
     if (blocks.isEmpty()) {
       // Without this the player gets "no ignition chamber found" and goes looking for the wrong
       // problem: the machine is fine, the tags that define it are missing.
-      return new Inspection(ValidationResult.invalid(StillProblem.NO_PARTS_DEFINED), Set.of());
+      return new Inspection(
+          ValidationResult.invalid(StillProblem.NO_PARTS_DEFINED), Set.of(), Set.of());
     }
 
     Map<Part, Set<RelativePos>> found = scan(view, blocks, tuning.scanRadius());
@@ -121,7 +128,7 @@ public final class StillValidator {
     }
 
     if (!problems.isEmpty()) {
-      return new Inspection(ValidationResult.invalid(problems), Set.of());
+      return new Inspection(ValidationResult.invalid(problems), Set.of(), Set.of());
     }
 
     // Both are present and unique, so both have a cell; the counts above are what guarantee it.
@@ -161,7 +168,7 @@ public final class StillValidator {
     }
 
     if (!problems.isEmpty()) {
-      return new Inspection(ValidationResult.invalid(problems), Set.of());
+      return new Inspection(ValidationResult.invalid(problems), Set.of(), Set.of());
     }
 
     PartCounts counts =
@@ -179,9 +186,11 @@ public final class StillValidator {
 
     return counts
         .tier(tuning.machineTierCap())
-        .map(tier -> new Inspection(ValidationResult.valid(tier), reach.tanks()))
+        .map(tier -> new Inspection(ValidationResult.valid(tier), reach.tanks(), bellows))
         .orElseGet(
-            () -> new Inspection(ValidationResult.invalid(StillProblem.UNKNOWN_TIER), Set.of()));
+            () ->
+                new Inspection(
+                    ValidationResult.invalid(StillProblem.UNKNOWN_TIER), Set.of(), Set.of()));
   }
 
   /**

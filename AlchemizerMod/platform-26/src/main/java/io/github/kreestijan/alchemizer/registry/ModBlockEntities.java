@@ -2,6 +2,7 @@ package io.github.kreestijan.alchemizer.registry;
 
 import io.github.kreestijan.alchemizer.Alchemizer;
 import io.github.kreestijan.alchemizer.brewing.blockentity.AlchemicalTankBlockEntity;
+import io.github.kreestijan.alchemizer.brewing.blockentity.BellowsBlockEntity;
 import io.github.kreestijan.alchemizer.brewing.blockentity.PressureChamberBlockEntity;
 import io.github.kreestijan.alchemizer.shop.blockentity.CounterBlockEntity;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -52,6 +53,16 @@ public final class ModBlockEntities {
           BLOCK_ENTITIES.register(
               "counter",
               () -> new BlockEntityType<>(CounterBlockEntity::new, ModBlocks.COUNTER.get()));
+
+  /**
+   * The bellows' presentation entity. It has no ticker and no saved data; its only job is to give
+   * the client renderer a per-block place to keep the animation's start time.
+   */
+  public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<BellowsBlockEntity>>
+      BELLOWS =
+          BLOCK_ENTITIES.register(
+              "bellows",
+              () -> new BlockEntityType<>(BellowsBlockEntity::new, ModBlocks.BELLOWS.get()));
 
   private ModBlockEntities() {}
 }

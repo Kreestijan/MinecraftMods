@@ -3,7 +3,9 @@ package io.github.kreestijan.alchemizer.registry;
 import io.github.kreestijan.alchemizer.Alchemizer;
 import io.github.kreestijan.alchemizer.brewing.block.AlchemicalTankBlock;
 import io.github.kreestijan.alchemizer.brewing.block.AlchemicalTubingBlock;
+import io.github.kreestijan.alchemizer.brewing.block.BellowsBlock;
 import io.github.kreestijan.alchemizer.brewing.block.IgnitionChamberBlock;
+import io.github.kreestijan.alchemizer.brewing.block.PartShapes;
 import io.github.kreestijan.alchemizer.brewing.block.PressureChamberBlock;
 import io.github.kreestijan.alchemizer.brewing.block.StillPartBlock;
 import io.github.kreestijan.alchemizer.shop.block.CounterBlock;
@@ -80,9 +82,10 @@ public final class ModBlocks {
               properties.mapColor(MapColor.METAL).strength(1.5F, 6.0F).sound(SoundType.GLASS));
 
   // The seven parts below are the tier 2 to tier 4 blocks from DESIGN.md §3.1, plus the tubing from
-  // the same table. They are all StillPartBlock: plain blocks that differ only in material, and
-  // that tell the nearest chamber when they are broken. The order they are declared in is the order
-  // a player builds them, and the order the creative tab lists them.
+  // the same table. Six of them are StillPartBlock: blocks that differ only in material and in the
+  // shape their model and collision box share. The bellows is the exception — it faces the block it
+  // is placed against, which is a second behaviour, so it has its own class. The order they are
+  // declared in is the order a player builds them, and the order the creative tab lists them.
 
   /**
    * Bolted to the side of the ignition chamber: what turns a fire into a draught.
@@ -94,9 +97,13 @@ public final class ModBlocks {
   public static final DeferredBlock<StillPartBlock> AIR_PRESSURE_VALVE =
       BLOCKS.registerBlock(
           "air_pressure_valve",
-          StillPartBlock::new,
+          properties -> new StillPartBlock(properties, PartShapes.AIR_PRESSURE_VALVE),
           properties ->
-              properties.mapColor(MapColor.METAL).strength(2.0F, 6.0F).sound(SoundType.METAL));
+              properties
+                  .mapColor(MapColor.METAL)
+                  .strength(2.0F, 6.0F)
+                  .sound(SoundType.METAL)
+                  .noOcclusion());
 
   /**
    * The leather-and-wood lungs that hang on a valve and shorten a brew.
@@ -104,12 +111,16 @@ public final class ModBlocks {
    * <p>Wood rather than metal, and softer than the valve it hangs on: it is the one part of the
    * machine a player is meant to read as replaceable.
    */
-  public static final DeferredBlock<StillPartBlock> BELLOWS =
+  public static final DeferredBlock<BellowsBlock> BELLOWS =
       BLOCKS.registerBlock(
           "bellows",
-          StillPartBlock::new,
+          BellowsBlock::new,
           properties ->
-              properties.mapColor(MapColor.WOOD).strength(1.5F, 3.0F).sound(SoundType.WOOD));
+              properties
+                  .mapColor(MapColor.WOOD)
+                  .strength(1.5F, 3.0F)
+                  .sound(SoundType.WOOD)
+                  .noOcclusion());
 
   /**
    * Sits on top of the pressure chamber and feeds the recipe book.
@@ -121,9 +132,13 @@ public final class ModBlocks {
   public static final DeferredBlock<StillPartBlock> FUNNEL =
       BLOCKS.registerBlock(
           "funnel",
-          StillPartBlock::new,
+          properties -> new StillPartBlock(properties, PartShapes.FUNNEL),
           properties ->
-              properties.mapColor(MapColor.METAL).strength(2.0F, 6.0F).sound(SoundType.METAL));
+              properties
+                  .mapColor(MapColor.METAL)
+                  .strength(2.0F, 6.0F)
+                  .sound(SoundType.METAL)
+                  .noOcclusion());
 
   /**
    * The chimney that stands on a valve and carries the fumes away.
@@ -135,9 +150,13 @@ public final class ModBlocks {
   public static final DeferredBlock<StillPartBlock> FLUE_STACK =
       BLOCKS.registerBlock(
           "flue_stack",
-          StillPartBlock::new,
+          properties -> new StillPartBlock(properties, PartShapes.FLUE_STACK),
           properties ->
-              properties.mapColor(MapColor.METAL).strength(2.0F, 6.0F).sound(SoundType.METAL));
+              properties
+                  .mapColor(MapColor.METAL)
+                  .strength(2.0F, 6.0F)
+                  .sound(SoundType.METAL)
+                  .noOcclusion());
 
   /**
    * The tier 4 part: a stone that hums in time with the brew.
@@ -149,9 +168,13 @@ public final class ModBlocks {
   public static final DeferredBlock<StillPartBlock> RESONANCE_CRYSTAL =
       BLOCKS.registerBlock(
           "resonance_crystal",
-          StillPartBlock::new,
+          properties -> new StillPartBlock(properties, PartShapes.RESONANCE_CRYSTAL),
           properties ->
-              properties.mapColor(MapColor.METAL).strength(1.0F, 6.0F).sound(SoundType.GLASS));
+              properties
+                  .mapColor(MapColor.METAL)
+                  .strength(1.0F, 6.0F)
+                  .sound(SoundType.GLASS)
+                  .noOcclusion());
 
   /**
    * Attached past the tank: each one doubles the batch a single brew produces.
@@ -163,9 +186,13 @@ public final class ModBlocks {
   public static final DeferredBlock<StillPartBlock> CONDENSER =
       BLOCKS.registerBlock(
           "condenser",
-          StillPartBlock::new,
+          properties -> new StillPartBlock(properties, PartShapes.CONDENSER),
           properties ->
-              properties.mapColor(MapColor.METAL).strength(1.5F, 6.0F).sound(SoundType.GLASS));
+              properties
+                  .mapColor(MapColor.METAL)
+                  .strength(1.5F, 6.0F)
+                  .sound(SoundType.GLASS)
+                  .noOcclusion());
 
   /**
    * The same job as the condenser, four times over instead of twice.
@@ -177,9 +204,13 @@ public final class ModBlocks {
   public static final DeferredBlock<StillPartBlock> ADVANCED_CONDENSER =
       BLOCKS.registerBlock(
           "advanced_condenser",
-          StillPartBlock::new,
+          properties -> new StillPartBlock(properties, PartShapes.CONDENSER),
           properties ->
-              properties.mapColor(MapColor.METAL).strength(2.0F, 6.0F).sound(SoundType.GLASS));
+              properties
+                  .mapColor(MapColor.METAL)
+                  .strength(2.0F, 6.0F)
+                  .sound(SoundType.GLASS)
+                  .noOcclusion());
 
   /**
    * The pipe that lets a tank or a condenser stand further off than face-to-face.
