@@ -15,7 +15,10 @@ import net.neoforged.neoforge.client.model.generators.template.FaceBuilder;
  * <p>One template per shape, kept out of {@code ModModelProvider} so that the provider stays a
  * provider. All elements are axis-aligned and stay inside 0..16, in the pixel-art spirit of
  * vanilla's hopper and brewing stand. Every face is mapped across the whole sheet: without that, a
- * 4- or 6-pixel face would sample only the middle of its texture.
+ * 4- or 6-pixel face would sample only the middle of its texture. The funnel is the one exception:
+ * it leaves UVs unset so the baker derives them from each element's position, which is how
+ * vanilla's hopper gives every band its own strip of the texture instead of squashing the sheet
+ * onto it.
  *
  * <p>The coordinates here are the same ones {@code PartShapes} uses for collision and selection, so
  * pointing at a part points at what was drawn.
@@ -44,6 +47,34 @@ final class StillPartTemplates {
    */
   static FaceBuilder full(FaceBuilder face, TextureSlot slot) {
     return face.texture(slot).uvs(0.0F, 0.0F, 16.0F, 16.0F);
+  }
+
+  /**
+   * One wall of a funnel band: the outward face is the part's side, the face into the bore is the
+   * inside, the top edge is the rim you see looking down, and the bottom is inside.
+   *
+   * <p>No UVs are set. The baker derives them from this element's position, so each band samples
+   * the strip of its sprite that matches the band's height and width instead of stretching the
+   * whole sheet over a 16x2 face. The funnel's three sprites are therefore painted as orthographic
+   * projections: side elevation, plan and bowl interior.
+   *
+   * @param outward the direction the wall's outer face points
+   * @return the element builder for that wall
+   */
+  private static Consumer<ElementBuilder> wall(
+      float fromX, float fromY, float fromZ, float toX, float toY, float toZ, Direction outward) {
+    Direction inward = outward.getOpposite();
+    return element ->
+        element
+            .from(fromX, fromY, fromZ)
+            .to(toX, toY, toZ)
+            .allFacesExcept(
+                (direction, face) -> face.texture(TextureSlot.SIDE),
+                Set.of(outward, inward, Direction.UP, Direction.DOWN))
+            .face(outward, face -> face.texture(TextureSlot.SIDE))
+            .face(inward, face -> face.texture(TextureSlot.INSIDE))
+            .face(Direction.UP, face -> face.texture(TextureSlot.TOP))
+            .face(Direction.DOWN, face -> face.texture(TextureSlot.INSIDE));
   }
 
   /**
@@ -146,8 +177,17 @@ final class StillPartTemplates {
           .build();
 
   /**
-   * The funnel, shaped like vanilla's hopper: a 2-pixel rim around an open bowl, the bowl floor, an
-   * 8-pixel body and the 4-pixel throat that meets the chamber below.
+   * The funnel: a squat stepped cone that sits directly on the block below.
+   *
+   * <p>Three wall bands step inward as they descend, 16 wide at the mouth and then 14 and 12, so
+   * the silhouette reads as a cone instead of vanilla's hopper. The bore narrows with them, 12 then
+   * 10 then 8, which keeps every wall 2 pixels thick. The 12-pixel bowl floor is the part's base:
+   * it lies at y0 and touches whatever the funnel is placed on, so there is no neck between the
+   * bowl and the machine.
+   *
+   * <p>The whole part stays in the block's lower six pixels. Above it is clear air, so the funnel
+   * sits on the machine rather than looming over it; nothing in the still's rules reads the shape,
+   * so the height is purely visual.
    */
   static final ExtendedModelTemplate FUNNEL =
       ExtendedModelTemplateBuilder.builder()
@@ -156,77 +196,32 @@ final class StillPartTemplates {
           .requiredTextureSlot(TextureSlot.TOP)
           .requiredTextureSlot(TextureSlot.INSIDE)
           .ambientOcclusion(false)
+          // Mouth band: 16 wide, 12-pixel bore.
+          .element(wall(0.0F, 4.0F, 0.0F, 16.0F, 6.0F, 2.0F, Direction.NORTH))
+          .element(wall(0.0F, 4.0F, 14.0F, 16.0F, 6.0F, 16.0F, Direction.SOUTH))
+          .element(wall(0.0F, 4.0F, 2.0F, 2.0F, 6.0F, 14.0F, Direction.WEST))
+          .element(wall(14.0F, 4.0F, 2.0F, 16.0F, 6.0F, 14.0F, Direction.EAST))
+          // Middle band: 14 wide, 10-pixel bore.
+          .element(wall(1.0F, 2.0F, 1.0F, 15.0F, 4.0F, 3.0F, Direction.NORTH))
+          .element(wall(1.0F, 2.0F, 13.0F, 15.0F, 4.0F, 15.0F, Direction.SOUTH))
+          .element(wall(1.0F, 2.0F, 3.0F, 3.0F, 4.0F, 13.0F, Direction.WEST))
+          .element(wall(13.0F, 2.0F, 3.0F, 15.0F, 4.0F, 13.0F, Direction.EAST))
+          // Lower band: 12 wide, 8-pixel bore.
+          .element(wall(2.0F, 1.0F, 2.0F, 14.0F, 2.0F, 4.0F, Direction.NORTH))
+          .element(wall(2.0F, 1.0F, 12.0F, 14.0F, 2.0F, 14.0F, Direction.SOUTH))
+          .element(wall(2.0F, 1.0F, 4.0F, 4.0F, 2.0F, 12.0F, Direction.WEST))
+          .element(wall(12.0F, 1.0F, 4.0F, 14.0F, 2.0F, 12.0F, Direction.EAST))
+          // Bowl floor and base: its up face is the inside seen down the bore.
           .element(
               element ->
                   element
-                      .from(0.0F, 10.0F, 0.0F)
-                      .to(16.0F, 11.0F, 16.0F)
-                      .face(Direction.UP, face -> full(face, TextureSlot.INSIDE))
-                      .face(Direction.DOWN, face -> full(face, TextureSlot.INSIDE))
-                      .face(Direction.NORTH, face -> full(face, TextureSlot.SIDE))
-                      .face(Direction.SOUTH, face -> full(face, TextureSlot.SIDE))
-                      .face(Direction.EAST, face -> full(face, TextureSlot.SIDE))
-                      .face(Direction.WEST, face -> full(face, TextureSlot.SIDE)))
-          .element(
-              element ->
-                  element
-                      .from(0.0F, 11.0F, 0.0F)
-                      .to(2.0F, 16.0F, 16.0F)
-                      .face(Direction.UP, face -> full(face, TextureSlot.TOP))
-                      .face(Direction.DOWN, face -> full(face, TextureSlot.INSIDE))
-                      .face(Direction.NORTH, face -> full(face, TextureSlot.SIDE))
-                      .face(Direction.SOUTH, face -> full(face, TextureSlot.SIDE))
-                      .face(Direction.WEST, face -> full(face, TextureSlot.SIDE))
-                      .face(Direction.EAST, face -> full(face, TextureSlot.INSIDE)))
-          .element(
-              element ->
-                  element
-                      .from(14.0F, 11.0F, 0.0F)
-                      .to(16.0F, 16.0F, 16.0F)
-                      .face(Direction.UP, face -> full(face, TextureSlot.TOP))
-                      .face(Direction.DOWN, face -> full(face, TextureSlot.INSIDE))
-                      .face(Direction.NORTH, face -> full(face, TextureSlot.SIDE))
-                      .face(Direction.SOUTH, face -> full(face, TextureSlot.SIDE))
-                      .face(Direction.EAST, face -> full(face, TextureSlot.SIDE))
-                      .face(Direction.WEST, face -> full(face, TextureSlot.INSIDE)))
-          .element(
-              element ->
-                  element
-                      .from(2.0F, 11.0F, 0.0F)
-                      .to(14.0F, 16.0F, 2.0F)
-                      .face(Direction.UP, face -> full(face, TextureSlot.TOP))
-                      .face(Direction.DOWN, face -> full(face, TextureSlot.INSIDE))
-                      .face(Direction.NORTH, face -> full(face, TextureSlot.SIDE))
-                      .face(Direction.SOUTH, face -> full(face, TextureSlot.INSIDE))
-                      .face(Direction.EAST, face -> full(face, TextureSlot.SIDE))
-                      .face(Direction.WEST, face -> full(face, TextureSlot.SIDE)))
-          .element(
-              element ->
-                  element
-                      .from(2.0F, 11.0F, 14.0F)
-                      .to(14.0F, 16.0F, 16.0F)
-                      .face(Direction.UP, face -> full(face, TextureSlot.TOP))
-                      .face(Direction.DOWN, face -> full(face, TextureSlot.INSIDE))
-                      .face(Direction.NORTH, face -> full(face, TextureSlot.INSIDE))
-                      .face(Direction.SOUTH, face -> full(face, TextureSlot.SIDE))
-                      .face(Direction.EAST, face -> full(face, TextureSlot.SIDE))
-                      .face(Direction.WEST, face -> full(face, TextureSlot.SIDE)))
-          .element(
-              element ->
-                  element
-                      .from(4.0F, 4.0F, 4.0F)
-                      .to(12.0F, 10.0F, 12.0F)
+                      .from(2.0F, 0.0F, 2.0F)
+                      .to(14.0F, 1.0F, 14.0F)
                       .allFacesExcept(
-                          (direction, face) -> full(face, TextureSlot.SIDE), Set.of(Direction.DOWN))
-                      .face(Direction.DOWN, face -> full(face, TextureSlot.INSIDE)))
-          .element(
-              element ->
-                  element
-                      .from(6.0F, 0.0F, 6.0F)
-                      .to(10.0F, 4.0F, 10.0F)
-                      .allFacesExcept(
-                          (direction, face) -> full(face, TextureSlot.SIDE), Set.of(Direction.DOWN))
-                      .face(Direction.DOWN, face -> full(face, TextureSlot.INSIDE)))
+                          (direction, face) -> face.texture(TextureSlot.SIDE),
+                          Set.of(Direction.UP, Direction.DOWN))
+                      .face(Direction.UP, face -> face.texture(TextureSlot.INSIDE))
+                      .face(Direction.DOWN, face -> face.texture(TextureSlot.INSIDE)))
           .build();
 
   /**

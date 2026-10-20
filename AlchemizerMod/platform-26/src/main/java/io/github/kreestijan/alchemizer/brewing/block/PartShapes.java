@@ -41,12 +41,15 @@ public final class PartShapes {
           Block.box(2.0, 12.0, 2.0, 14.0, 14.0, 14.0),
           Block.box(0.0, 14.0, 0.0, 16.0, 16.0, 16.0));
 
-  /** A hopper-like bowl, narrowing to the 4-pixel throat that meets the chamber below. */
+  /**
+   * The squat stepped funnel: three wall bands and the bowl floor, whose underside is the part's
+   * base at y0. Its outline is the model's outer footprint, which ends at y6.
+   */
   public static final VoxelShape FUNNEL =
       Shapes.or(
-          Block.box(0.0, 10.0, 0.0, 16.0, 16.0, 16.0),
-          Block.box(4.0, 4.0, 4.0, 12.0, 10.0, 12.0),
-          Block.box(6.0, 0.0, 6.0, 10.0, 4.0, 10.0));
+          Block.box(0.0, 4.0, 0.0, 16.0, 6.0, 16.0),
+          Block.box(1.0, 2.0, 1.0, 15.0, 4.0, 15.0),
+          Block.box(2.0, 0.0, 2.0, 14.0, 2.0, 14.0));
 
   /** The 6-pixel chimney plus a 10-pixel collar at each end, so a stack reads as one column. */
   public static final VoxelShape FLUE_STACK =
